@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell } from 'lucide-react';
+import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
@@ -15,10 +15,10 @@ const firebaseConfig = {
   appId: "1:523142849231:web:f10e23785d6451f510cdba"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
 
 // --- Notification Component ---
 const Notification = ({ message, type, onDismiss }) => {
@@ -730,6 +730,7 @@ const App = () => {
   const [view, setView] = useState('orders');
   const [authView, setAuthView] = useState('login');
   const [notification, setNotification] = useState({ message: '', type: '' });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const showNotification = (message, type) => {
     setNotification({ message, type });
@@ -761,6 +762,11 @@ const App = () => {
     await signOut(auth);
   };
 
+  const handleSetView = (newView) => {
+    setView(newView);
+    setIsSidebarOpen(false);
+  };
+
   const renderView = () => {
     switch(view) {
         case 'orders': return <OrdersView restaurantId={restaurantId} showNotification={showNotification} />;
@@ -773,7 +779,7 @@ const App = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen"><Loader2 className="animate-spin text-green-600" size={48} /></div>
+      <div className="flex items-center justify-center min-h-screen bg-gray-100"><Loader2 className="animate-spin text-green-600" size={48} /></div>
     );
   }
 
@@ -786,21 +792,35 @@ const App = () => {
             <SignUpPage onShowLogin={() => setAuthView('login')} />
         ) : (
             <div className="flex min-h-screen bg-gray-50">
-                <nav className="w-64 bg-white shadow-lg flex-shrink-0">
-                    <div className="p-6 border-b"><h2 className="text-2xl font-bold text-green-600">Snaccit</h2><p className="text-sm text-gray-500">For Business</p></div>
+                 {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden"></div>}
+                <nav className={`fixed lg:relative z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+                    <div className="p-6 border-b flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-green-600">Snaccit</h2>
+                        <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-gray-800">
+                            <X size={24} />
+                        </button>
+                    </div>
                     <ul className="py-4">
-                        <li onClick={() => setView('orders')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'orders' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><UtensilsCrossed className="mr-3" size={20}/> Incoming Orders</li>
-                        <li onClick={() => setView('reviews')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'reviews' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageSquare className="mr-3" size={20}/> Reviews</li>
-                        <li onClick={() => setView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChart className="mr-3" size={20}/> Analytics</li>
-                        <li onClick={() => setView('settings')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'settings' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><Settings className="mr-3" size={20}/> Settings</li>
+                        <li onClick={() => handleSetView('orders')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'orders' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><UtensilsCrossed className="mr-3" size={20}/> Incoming Orders</li>
+                        <li onClick={() => handleSetView('reviews')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'reviews' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageSquare className="mr-3" size={20}/> Reviews</li>
+                        <li onClick={() => handleSetView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChart className="mr-3" size={20}/> Analytics</li>
+                        <li onClick={() => handleSetView('settings')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'settings' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><Settings className="mr-3" size={20}/> Settings</li>
                     </ul>
                     <div className="absolute bottom-0 w-64 p-6 border-t">
                         <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-2 font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"><LogOut className="mr-2" size={16}/>Logout</button>
                     </div>
                 </nav>
-                <main className="flex-1 p-10 overflow-x-auto">
-                    {renderView()}
-                </main>
+                <div className="flex-1 flex flex-col">
+                    <header className="bg-white shadow-md lg:hidden p-4 flex justify-between items-center">
+                        <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600">
+                            <Menu size={24} />
+                        </button>
+                        <h2 className="text-xl font-bold text-green-600">Snaccit Dashboard</h2>
+                    </header>
+                    <main className="flex-1 p-6 md:p-10 overflow-y-auto">
+                        {renderView()}
+                    </main>
+                </div>
             </div>
         )}
     </>
