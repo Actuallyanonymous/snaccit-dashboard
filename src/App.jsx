@@ -279,13 +279,13 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             <p className="text-gray-600 mt-2">New pre-orders will appear here in real-time.</p>
             <div className="mt-8">
                 {isLoading ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         <SkeletonOrderCard />
                         <SkeletonOrderCard />
                         <SkeletonOrderCard />
                     </div>
                 ) : orders.length > 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {orders.map(order => (
                             <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'}`}>
                                 <div className="flex justify-between items-center mb-4">
@@ -757,6 +757,18 @@ const App = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Effect to lock body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isSidebarOpen) {
+        document.body.style.overflow = 'hidden';
+    } else {
+        document.body.style.overflow = 'auto';
+    }
+    return () => {
+        document.body.style.overflow = 'auto';
+    };
+  }, [isSidebarOpen]);
 
   const handleLogout = async () => {
     await signOut(auth);
