@@ -459,7 +459,7 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
 };
 
 
-// --- Settings View Component ---
+// --- [UPDATED] Settings View Component ---
 const SettingsView = ({ restaurantId, showNotification }) => {
     const [details, setDetails] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
@@ -486,6 +486,8 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     const handleDetailsChange = (e) => setDetails({ ...details, [e.target.name]: e.target.value });
     
     const handleSaveChanges = async () => {
+        // This function already saves the entire 'details' object,
+        // so it will automatically save our new time fields.
         await updateDoc(doc(db, "restaurants", restaurantId), details);
         showNotification("Details updated successfully!", "success");
     };
@@ -542,6 +544,19 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                     <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div><label className="block text-sm font-medium">Cuisine</label><input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
+                    
+                    {/* --- ADDED START --- */}
+                    {/* These new inputs will be saved by the existing handleSaveChanges function */}
+                    <div>
+                        <label className="block text-sm font-medium">Opening Time</label>
+                        <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium">Closing Time</label>
+                        <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
+                    {/* --- ADDED END --- */}
+
                 </div>
                 <button onClick={handleSaveChanges} className="mt-4 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Changes</button>
             </div>
