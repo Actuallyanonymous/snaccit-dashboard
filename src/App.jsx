@@ -459,7 +459,7 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
 };
 
 
-// --- [UPDATED] Settings View Component ---
+// --- [CORRECTED] Settings View Component ---
 const SettingsView = ({ restaurantId, showNotification }) => {
     const [details, setDetails] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
@@ -486,8 +486,6 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     const handleDetailsChange = (e) => setDetails({ ...details, [e.target.name]: e.target.value });
     
     const handleSaveChanges = async () => {
-        // This function already saves the entire 'details' object,
-        // so it will automatically save our new time fields.
         await updateDoc(doc(db, "restaurants", restaurantId), details);
         showNotification("Details updated successfully!", "success");
     };
@@ -546,7 +544,6 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                     <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     
                     {/* --- ADDED START --- */}
-                    {/* These new inputs will be saved by the existing handleSaveChanges function */}
                     <div>
                         <label className="block text-sm font-medium">Opening Time</label>
                         <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
