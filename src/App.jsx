@@ -459,7 +459,7 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
 };
 
 
-// --- Settings View Component ---
+// --- Settings View Component (Original Stable Version) ---
 const SettingsView = ({ restaurantId, showNotification }) => {
     const [details, setDetails] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
@@ -542,14 +542,6 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                     <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div><label className="block text-sm font-medium">Cuisine</label><input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
-                    <div>
-                        <label className="block text-sm font-medium">Opening Time</label>
-                        <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium">Closing Time</label>
-                        <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
-                    </div>
                 </div>
                 <button onClick={handleSaveChanges} className="mt-4 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Changes</button>
             </div>
@@ -813,7 +805,7 @@ const App = () => {
         ) : (
             <div className="flex min-h-screen bg-gray-50">
                  {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden"></div>}
-                <nav className={`fixed lg:static z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+                <nav className={`fixed lg:relative z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:transform-none`}>
                     <div className="p-6 border-b flex justify-between items-center">
                         <h2 className="text-2xl font-bold text-green-600">Snaccit</h2>
                         <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-gray-800">
@@ -848,5 +840,4 @@ const App = () => {
 };
 
 export default App;
-
 
