@@ -813,7 +813,7 @@ const App = () => {
         ) : (
             <div className="flex min-h-screen bg-gray-50">
                  {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden"></div>}
-                <nav className={`fixed lg:static z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:transform-none`}>
+                <nav className={`fixed lg:static z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
                     <div className="p-6 border-b flex justify-between items-center">
                         <h2 className="text-2xl font-bold text-green-600">Snaccit</h2>
                         <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-gray-800">
