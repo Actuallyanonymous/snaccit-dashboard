@@ -542,6 +542,14 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                     <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div><label className="block text-sm font-medium">Cuisine</label><input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
+                    <div>
+                        <label className="block text-sm font-medium">Opening Time</label>
+                        <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium">Closing Time</label>
+                        <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
                 </div>
                 <button onClick={handleSaveChanges} className="mt-4 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Changes</button>
             </div>
@@ -758,18 +766,6 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Effect to lock body scroll when sidebar is open on mobile
-  useEffect(() => {
-    if (isSidebarOpen) {
-        document.body.style.overflow = 'hidden';
-    } else {
-        document.body.style.overflow = 'auto';
-    }
-    return () => {
-        document.body.style.overflow = 'auto';
-    };
-  }, [isSidebarOpen]);
-
   const handleLogout = async () => {
     await signOut(auth);
   };
@@ -803,9 +799,12 @@ const App = () => {
             <LoginPage onShowSignUp={() => setAuthView('signup')} /> : 
             <SignUpPage onShowLogin={() => setAuthView('login')} />
         ) : (
-            <div className="flex min-h-screen bg-gray-50">
-                 {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden"></div>}
-                <nav className={`fixed lg:relative z-40 w-64 bg-white shadow-lg h-full flex-shrink-0 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:transform-none`}>
+            <div className="relative min-h-screen lg:flex">
+                {/* Overlay for mobile */}
+                {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden"></div>}
+                
+                {/* Sidebar */}
+                <nav className={`fixed top-0 left-0 z-40 w-64 h-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                     <div className="p-6 border-b flex justify-between items-center">
                         <h2 className="text-2xl font-bold text-green-600">Snaccit</h2>
                         <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-gray-500 hover:text-gray-800">
@@ -818,18 +817,23 @@ const App = () => {
                         <li onClick={() => handleSetView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChart className="mr-3" size={20}/> Analytics</li>
                         <li onClick={() => handleSetView('settings')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'settings' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><Settings className="mr-3" size={20}/> Settings</li>
                     </ul>
-                    <div className="absolute bottom-0 w-64 p-6 border-t">
+                    <div className="absolute bottom-0 w-full p-6 border-t">
                         <button onClick={handleLogout} className="w-full flex items-center justify-center px-4 py-2 font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"><LogOut className="mr-2" size={16}/>Logout</button>
                     </div>
                 </nav>
-                <div className="flex-1 flex flex-col">
-                    <header className="bg-white shadow-md lg:hidden p-4 flex justify-between items-center">
+
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col lg:ml-64">
+                    {/* Mobile Header */}
+                    <header className="bg-white shadow-sm lg:hidden p-4 flex justify-between items-center sticky top-0 z-20">
                         <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600">
                             <Menu size={24} />
                         </button>
                         <h2 className="text-xl font-bold text-green-600">Snaccit Dashboard</h2>
                     </header>
-                    <main className="flex-1 p-6 md:p-10 overflow-y-auto">
+                    
+                    {/* Content */}
+                    <main className="flex-1 p-6 md:p-10">
                         {renderView()}
                     </main>
                 </div>
@@ -840,4 +844,5 @@ const App = () => {
 };
 
 export default App;
+
 
