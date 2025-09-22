@@ -265,6 +265,8 @@ const OrdersView = ({ restaurantId, showNotification }) => {
     };
 
     const statusStyles = {
+        awaiting_payment: { borderColor: 'border-gray-400', bgColor: 'bg-gray-100', textColor: 'text-gray-600' },
+        payment_failed: { borderColor: 'border-red-500', bgColor: 'bg-red-50', textColor: 'text-red-700' },
         pending: { borderColor: 'border-yellow-500', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700' },
         accepted: { borderColor: 'border-blue-500', bgColor: 'bg-blue-50', textColor: 'text-blue-700' },
         preparing: { borderColor: 'border-indigo-500', bgColor: 'bg-indigo-50', textColor: 'text-indigo-700' },
@@ -290,7 +292,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                             <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'}`}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="font-bold text-lg truncate">{order.userEmail}</h3>
-                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status}</span>
+                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
                                 </div>
                                 <div className="mb-4">
                                     {order.items.map((item, index) => (
@@ -844,5 +846,3 @@ const App = () => {
 };
 
 export default App;
-
-
