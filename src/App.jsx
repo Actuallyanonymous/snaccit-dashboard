@@ -290,10 +290,20 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {orders.map(order => (
                             <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'}`}>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="font-bold text-lg truncate">{order.userEmail}</h3>
-                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
-                                </div>
+                                // NEW CODE for OrdersView component
+<div className="flex justify-between items-start mb-4">
+    <div>
+        {/* Show Name if available, else fallback to "Customer" */}
+        <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
+        {/* Show Phone if available, else fallback to Email, else N/A */}
+        <p className="text-sm font-medium text-gray-600">{order.userPhone || order.userEmail || 'N/A'}</p>
+         {/* Optionally show email below phone if both exist */}
+        {order.userName && order.userEmail && order.userPhone && (
+             <p className="text-xs text-gray-400 truncate">{order.userEmail}</p>
+        )}
+    </div>
+    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
+</div>
                                 <div className="mb-4">
                                     {order.items.map((item, index) => (
                                         <div key={index} className="text-gray-700">
