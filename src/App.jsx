@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu } from 'lucide-react';
+import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight} from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
@@ -353,7 +353,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 
 // --- Menu Item Modal ---
 const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }) => {
-    const defaultItem = { name: '', description: '', isVeg: true, sizes: [{ name: 'Regular', price: '' }], addons: [], imageUrl: '' };
+    const defaultItem = { name: '', description: '', isVeg: true, sizes: [{ name: 'Regular', price: '', isAvailable: true }], addons: [], imageUrl: '' };
     const [item, setItem] = useState(itemToEdit || defaultItem);
 
     useEffect(() => {
@@ -467,7 +467,7 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
 };
 
 
-// --- Settings View Component (Original Stable Version) ---
+// --- Settings View Component (Updated with Availability Toggle) ---
 const SettingsView = ({ restaurantId, showNotification }) => {
     const [details, setDetails] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
@@ -510,13 +510,16 @@ const SettingsView = ({ restaurantId, showNotification }) => {
 
     const handleSaveItem = async (itemData) => {
         const menuCollectionRef = collection(db, "restaurants", restaurantId, "menu");
+        // Ensure isAvailable is set for new items
+        const dataToSave = { ...itemData, isAvailable: itemData.isAvailable !== false }; 
+
         if (itemData.id) {
             const itemDocRef = doc(db, "restaurants", restaurantId, "menu", itemData.id);
-            const { id, ...dataToUpdate } = itemData;
+            const { id, ...dataToUpdate } = dataToSave;
             await updateDoc(itemDocRef, dataToUpdate);
             showNotification("Menu item updated!", "success");
         } else {
-            await addDoc(menuCollectionRef, itemData);
+            await addDoc(menuCollectionRef, dataToSave);
             showNotification("Menu item added!", "success");
         }
         setIsModalOpen(false);
@@ -526,6 +529,20 @@ const SettingsView = ({ restaurantId, showNotification }) => {
         if (window.confirm("Are you sure you want to delete this item?")) {
             await deleteDoc(doc(db, "restaurants", restaurantId, "menu", itemId));
             showNotification("Menu item deleted.", "success");
+        }
+    };
+
+    // --- NEW FUNCTION: Handle Availability Toggle ---
+    const handleToggleAvailability = async (item) => {
+        try {
+            const itemDocRef = doc(db, "restaurants", restaurantId, "menu", item.id);
+            // If isAvailable is undefined (old items), treat as true, so toggle makes it false
+            const currentStatus = item.isAvailable !== false; 
+            await updateDoc(itemDocRef, { isAvailable: !currentStatus });
+            showNotification(`Item marked as ${!currentStatus ? 'Available' : 'Unavailable'}`, "info");
+        } catch (error) {
+            console.error("Error toggling availability:", error);
+            showNotification("Failed to update status", "error");
         }
     };
 
@@ -568,14 +585,34 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead><tr className="border-b"><th className="p-2">Name</th><th className="p-2">Description</th><th className="p-2">Price</th><th className="p-2">Veg</th><th className="p-2">Actions</th></tr></thead>
+                        <thead>
+                            <tr className="border-b">
+                                <th className="p-2">Name</th>
+                                <th className="p-2">Description</th>
+                                <th className="p-2">Price</th>
+                                <th className="p-2">Veg</th>
+                                {/* New Column Header */}
+                                <th className="p-2">Available</th> 
+                                <th className="p-2">Actions</th>
+                            </tr>
+                        </thead>
                         <tbody>
                             {menuItems.map(item => (
-                                <tr key={item.id} className="border-b hover:bg-gray-50">
+                                <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.isAvailable === false ? 'opacity-60 bg-gray-50' : ''}`}>
                                     <td className="p-2 font-medium">{item.name}</td>
                                     <td className="p-2 text-sm text-gray-600 max-w-xs truncate">{item.description}</td>
                                     <td className="p-2">₹{item.sizes && item.sizes[0] ? item.sizes[0].price : 'N/A'}</td>
                                     <td className="p-2">{item.isVeg ? 'Yes' : 'No'}</td>
+                                    {/* New Column Body */}
+                                    <td className="p-2">
+                                        <button onClick={() => handleToggleAvailability(item)} className="focus:outline-none transition-colors hover:opacity-80">
+                                            {item.isAvailable !== false ? (
+                                                <ToggleRight size={32} className="text-green-600" />
+                                            ) : (
+                                                <ToggleLeft size={32} className="text-gray-400" />
+                                            )}
+                                        </button>
+                                    </td>
                                     <td className="p-2 flex gap-2">
                                         <button onClick={() => handleOpenModalForEdit(item)} className="text-blue-500 hover:text-blue-700"><Edit size={18}/></button>
                                         <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
