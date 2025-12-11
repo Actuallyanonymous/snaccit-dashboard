@@ -233,16 +233,46 @@ const SkeletonOrderCard = () => (
     </div>
 );
 
-// --- Orders View Component ---
+// --- Orders View Component (With Ringing Notification) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSoundEnabled, setIsSoundEnabled] = useState(false); // Track if user allowed audio
+    
+    // Create the audio object once using a ref
+    const audioRef = React.useRef(new Audio('/alert.mp3')); 
+
+    useEffect(() => {
+        // Configure audio settings on mount
+        audioRef.current.loop = true; // Make it repeat endlessly
+        audioRef.current.volume = 1.0; // Max volume
+
+        return () => {
+            // Cleanup: Stop sound if user leaves this view
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        };
+    }, []);
+
+    // Function to enable sound (User MUST click this once)
+    const enableSound = () => {
+        audioRef.current.play().then(() => {
+            audioRef.current.pause(); // Immediately pause. We just needed the permission.
+            audioRef.current.currentTime = 0;
+            setIsSoundEnabled(true);
+            showNotification("Sound alerts enabled!", "success");
+        }).catch(err => {
+            console.error("Audio permission failed:", err);
+            showNotification("Could not enable audio. Check browser settings.", "error");
+        });
+    };
 
     useEffect(() => {
         if (!restaurantId) {
             setIsLoading(false);
             return;
         };
+
         const q = query(collection(db, "orders"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -252,15 +282,36 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             }));
             setOrders(ordersData);
             setIsLoading(false);
+
+            // --- RINGING LOGIC ---
+            // Check if there is AT LEAST one order that is 'pending'
+            const hasPendingOrders = ordersData.some(order => order.status === 'pending');
+
+            if (hasPendingOrders && isSoundEnabled) {
+                // Only play if not already playing
+                if (audioRef.current.paused) {
+                    console.log("New order detected! Playing sound.");
+                    audioRef.current.play().catch(e => console.log("Playback prevented:", e));
+                }
+            } else {
+                // If no pending orders, stop the sound immediately
+                if (!audioRef.current.paused) {
+                    console.log("No pending orders. Stopping sound.");
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                }
+            }
         }, (error) => {
             console.error("Error fetching orders: ", error);
-            showNotification("Could not fetch orders. You may be missing a database index.", "error");
+            showNotification("Could not fetch orders.", "error");
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [restaurantId, showNotification]);
+    }, [restaurantId, showNotification, isSoundEnabled]); // Re-run logic if sound gets enabled
 
     const handleUpdateStatus = async (orderId, newStatus) => {
+        // The sound will stop automatically via the useEffect above 
+        // because the order status changes from 'pending' to 'accepted'/'declined'
         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
     };
 
@@ -277,34 +328,52 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 
     return (
         <div>
-            <h1 className="text-3xl font-bold text-gray-800">Incoming Orders</h1>
-            <p className="text-gray-600 mt-2">New pre-orders will appear here in real-time.</p>
+            <div className="flex justify-between items-center mb-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800">Incoming Orders</h1>
+                    <p className="text-gray-600 mt-2">New pre-orders will appear here in real-time.</p>
+                </div>
+                {/* Visual indicator for Sound Status */}
+                {!isSoundEnabled ? (
+                    <button 
+                        onClick={enableSound}
+                        className="bg-red-600 text-white font-bold py-2 px-4 rounded-full animate-pulse hover:bg-red-700 shadow-lg flex items-center gap-2"
+                    >
+                        <Bell size={20} /> Enable Sound Alerts
+                    </button>
+                ) : (
+                    <div className="bg-green-100 text-green-800 font-medium py-2 px-4 rounded-full flex items-center gap-2 border border-green-200">
+                        <CheckCircle size={16} /> Sound Active
+                    </div>
+                )}
+            </div>
+
             <div className="mt-8">
                 {isLoading ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        <SkeletonOrderCard />
-                        <SkeletonOrderCard />
-                        <SkeletonOrderCard />
+                        <SkeletonOrderCard /><SkeletonOrderCard /><SkeletonOrderCard />
                     </div>
                 ) : orders.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {orders.map(order => (
-                            <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'}`}>
-<div className="flex justify-between items-start mb-4">
-    <div>
-        <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
-        <p className="text-sm font-medium text-gray-600">{order.userPhone || order.userEmail || 'N/A'}</p>
-        {order.userName && order.userEmail && order.userPhone && (
-             <p className="text-xs text-gray-400 truncate">{order.userEmail}</p>
-        )}
-    </div>
-    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
-</div>
+                            <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
+                                
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
+                                        <p className="text-sm font-medium text-gray-600">{order.userPhone || order.userEmail || 'N/A'}</p>
+                                        {order.userName && order.userEmail && order.userPhone && (
+                                             <p className="text-xs text-gray-400 truncate">{order.userEmail}</p>
+                                        )}
+                                    </div>
+                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
+                                </div>
                                 <div className="mb-4">
                                     {order.items.map((item, index) => (
                                         <div key={index} className="text-gray-700">
                                             <span>{item.quantity} x {item.name}</span>
                                             {item.size && <span className="text-xs text-gray-500"> ({item.size})</span>}
+                                            {item.addons && item.addons.length > 0 && <span className="text-xs text-gray-500"> + {item.addons.join(', ')}</span>}
                                         </div>
                                     ))}
                                 </div>
@@ -315,7 +384,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                                     </div>
                                     {order.status === 'pending' && (
                                         <div className="mt-4 flex space-x-2">
-                                            <button onClick={() => handleUpdateStatus(order.id, 'accepted')} className="flex-1 flex items-center justify-center bg-green-500 text-white font-semibold py-2 rounded-lg hover:bg-green-600"><CheckCircle size={16} className="mr-2"/>Accept</button>
+                                            <button onClick={() => handleUpdateStatus(order.id, 'accepted')} className="flex-1 flex items-center justify-center bg-green-500 text-white font-semibold py-2 rounded-lg hover:bg-green-600 shadow-lg transform active:scale-95 transition-transform"><CheckCircle size={16} className="mr-2"/>Accept</button>
                                             <button onClick={() => handleUpdateStatus(order.id, 'declined')} className="flex-1 flex items-center justify-center bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg hover:bg-gray-300"><XCircle size={16} className="mr-2"/>Decline</button>
                                         </div>
                                     )}
@@ -342,7 +411,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                   <div className="bg-white p-12 rounded-lg shadow-md text-center">
                     <Inbox size={48} className="mx-auto text-gray-300" />
                     <h3 className="mt-4 text-xl font-semibold text-gray-700">No new orders yet</h3>
-                    <p className="text-gray-500 mt-1">We'll show new pre-orders here as soon as they come in.</p>
+                    <p className="text-gray-500 mt-1">We'll ring the alarm when a pre-order comes in!</p>
                   </div>
                 )}
             </div>
