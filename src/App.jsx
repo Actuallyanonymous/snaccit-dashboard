@@ -233,49 +233,59 @@ const SkeletonOrderCard = () => (
     </div>
 );
 
-// --- Orders View Component (With Toggle & Background Audio) ---
+// --- Orders View Component (Robust Audio Fix) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    // Track pending state in a ref so event listeners can access the latest value without re-binding
+    const hasPendingRef = React.useRef(false); 
     
-    // Initialize Toggle State from LocalStorage (Remember user preference)
     const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
         return localStorage.getItem('snaccit_sound_enabled') === 'true';
     });
     
-    // Audio Reference
     const audioRef = React.useRef(new Audio('/alert.mp3')); 
 
     useEffect(() => {
-        // Configure audio
         audioRef.current.loop = true;
         audioRef.current.volume = 1.0;
+
+        // --- NEW: Force Resume on Tab Focus ---
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && hasPendingRef.current && isSoundEnabled) {
+                console.log("Tab focused & pending order exists: Resuming Alarm.");
+                audioRef.current.play().catch(e => console.log("Resume failed:", e));
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("focus", handleVisibilityChange); // Extra backup for window focus
 
         return () => {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("focus", handleVisibilityChange);
         };
-    }, []);
+    }, [isSoundEnabled]);
 
-    // Toggle Handler
     const handleToggleSound = () => {
         const newState = !isSoundEnabled;
         setIsSoundEnabled(newState);
         localStorage.setItem('snaccit_sound_enabled', newState);
 
         if (newState) {
-            // "Unlock" the audio context immediately on click
-            // Browsers block audio unless triggered by user interaction
             audioRef.current.play().then(() => {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
+                // Determine if we should keep playing or stop based on current orders
+                if (!hasPendingRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                }
                 showNotification("Sound alerts ON", "success");
-            }).catch(err => {
-                console.error("Audio unlock failed:", err);
-                showNotification("Click anywhere on the page to enable audio permission.", "info");
+            }).catch(() => {
+                showNotification("Tap anywhere to enable audio.", "info");
             });
         } else {
-            // Stop immediately if toggled off
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
             showNotification("Sound alerts OFF", "info");
@@ -283,10 +293,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
     };
 
     useEffect(() => {
-        if (!restaurantId) {
-            setIsLoading(false);
-            return;
-        };
+        if (!restaurantId) { setIsLoading(false); return; };
 
         const q = query(collection(db, "orders"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
         
@@ -298,39 +305,38 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             setOrders(ordersData);
             setIsLoading(false);
 
-            // --- RINGING LOGIC ---
-            const hasPendingOrders = ordersData.some(order => order.status === 'pending');
+            // Update the Ref so our Visibility Listener knows the truth
+            const hasPending = ordersData.some(order => order.status === 'pending');
+            hasPendingRef.current = hasPending;
 
-            if (hasPendingOrders && isSoundEnabled) {
-                // If not already playing, PLAY
-                if (audioRef.current.paused) {
-                    console.log("Pending order detected. Attempting to play sound...");
-                    audioRef.current.play().catch(e => {
-                        console.log("Background play blocked:", e);
-                        // Fallback: If blocked, try to notify
-                        if ('Notification' in window && Notification.permission === 'granted') {
-                            new Notification("New Order! (Sound Blocked)");
-                        }
+            if (hasPending && isSoundEnabled) {
+                // Use a promise to safely check if playing
+                const playPromise = audioRef.current.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("Auto-play prevented (Background limitation):", error);
                     });
                 }
             } else {
-                // Stop sound if no pending orders (or sound disabled)
-                if (!audioRef.current.paused) {
-                    audioRef.current.pause();
-                    audioRef.current.currentTime = 0;
-                }
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
             }
         }, (error) => {
             console.error("Error fetching orders: ", error);
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [restaurantId, isSoundEnabled]); // Re-run when toggle changes
+    }, [restaurantId, isSoundEnabled]);
 
     const handleUpdateStatus = async (orderId, newStatus) => {
+        // Optimistically update local state to stop ringing instantly
+        hasPendingRef.current = false; 
+        audioRef.current.pause();
         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
     };
 
+    // ... (Keep your existing statusStyles object and JSX return exactly the same)
+    // Just ensure you use the updated handleUpdateStatus logic inside the JSX
     const statusStyles = {
         awaiting_payment: { borderColor: 'border-gray-400', bgColor: 'bg-gray-100', textColor: 'text-gray-600' },
         payment_failed: { borderColor: 'border-red-500', bgColor: 'bg-red-50', textColor: 'text-red-700' },
@@ -349,8 +355,6 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                     <h1 className="text-3xl font-bold text-gray-800">Incoming Orders</h1>
                     <p className="text-gray-600 mt-1">Live feed. Keep this tab open to hear alerts.</p>
                 </div>
-                
-                {/* --- TOGGLE SWITCH UI --- */}
                 <div className="flex items-center gap-3 bg-white p-3 rounded-full shadow-sm border border-gray-200">
                     <span className={`text-sm font-bold ${isSoundEnabled ? 'text-gray-800' : 'text-gray-400'}`}>
                         {isSoundEnabled ? 'Sound Alerts ON' : 'Sound Alerts OFF'}
