@@ -233,38 +233,53 @@ const SkeletonOrderCard = () => (
     </div>
 );
 
-// --- Orders View Component (With Ringing Notification) ---
+// --- Orders View Component (With Toggle & Background Audio) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSoundEnabled, setIsSoundEnabled] = useState(false); // Track if user allowed audio
     
-    // Create the audio object once using a ref
+    // Initialize Toggle State from LocalStorage (Remember user preference)
+    const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
+        return localStorage.getItem('snaccit_sound_enabled') === 'true';
+    });
+    
+    // Audio Reference
     const audioRef = React.useRef(new Audio('/alert.mp3')); 
 
     useEffect(() => {
-        // Configure audio settings on mount
-        audioRef.current.loop = true; // Make it repeat endlessly
-        audioRef.current.volume = 1.0; // Max volume
+        // Configure audio
+        audioRef.current.loop = true;
+        audioRef.current.volume = 1.0;
 
         return () => {
-            // Cleanup: Stop sound if user leaves this view
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
         };
     }, []);
 
-    // Function to enable sound (User MUST click this once)
-    const enableSound = () => {
-        audioRef.current.play().then(() => {
-            audioRef.current.pause(); // Immediately pause. We just needed the permission.
+    // Toggle Handler
+    const handleToggleSound = () => {
+        const newState = !isSoundEnabled;
+        setIsSoundEnabled(newState);
+        localStorage.setItem('snaccit_sound_enabled', newState);
+
+        if (newState) {
+            // "Unlock" the audio context immediately on click
+            // Browsers block audio unless triggered by user interaction
+            audioRef.current.play().then(() => {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                showNotification("Sound alerts ON", "success");
+            }).catch(err => {
+                console.error("Audio unlock failed:", err);
+                showNotification("Click anywhere on the page to enable audio permission.", "info");
+            });
+        } else {
+            // Stop immediately if toggled off
+            audioRef.current.pause();
             audioRef.current.currentTime = 0;
-            setIsSoundEnabled(true);
-            showNotification("Sound alerts enabled!", "success");
-        }).catch(err => {
-            console.error("Audio permission failed:", err);
-            showNotification("Could not enable audio. Check browser settings.", "error");
-        });
+            showNotification("Sound alerts OFF", "info");
+        }
     };
 
     useEffect(() => {
@@ -284,34 +299,35 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             setIsLoading(false);
 
             // --- RINGING LOGIC ---
-            // Check if there is AT LEAST one order that is 'pending'
             const hasPendingOrders = ordersData.some(order => order.status === 'pending');
 
             if (hasPendingOrders && isSoundEnabled) {
-                // Only play if not already playing
+                // If not already playing, PLAY
                 if (audioRef.current.paused) {
-                    console.log("New order detected! Playing sound.");
-                    audioRef.current.play().catch(e => console.log("Playback prevented:", e));
+                    console.log("Pending order detected. Attempting to play sound...");
+                    audioRef.current.play().catch(e => {
+                        console.log("Background play blocked:", e);
+                        // Fallback: If blocked, try to notify
+                        if ('Notification' in window && Notification.permission === 'granted') {
+                            new Notification("New Order! (Sound Blocked)");
+                        }
+                    });
                 }
             } else {
-                // If no pending orders, stop the sound immediately
+                // Stop sound if no pending orders (or sound disabled)
                 if (!audioRef.current.paused) {
-                    console.log("No pending orders. Stopping sound.");
                     audioRef.current.pause();
                     audioRef.current.currentTime = 0;
                 }
             }
         }, (error) => {
             console.error("Error fetching orders: ", error);
-            showNotification("Could not fetch orders.", "error");
             setIsLoading(false);
         });
         return () => unsubscribe();
-    }, [restaurantId, showNotification, isSoundEnabled]); // Re-run logic if sound gets enabled
+    }, [restaurantId, isSoundEnabled]); // Re-run when toggle changes
 
     const handleUpdateStatus = async (orderId, newStatus) => {
-        // The sound will stop automatically via the useEffect above 
-        // because the order status changes from 'pending' to 'accepted'/'declined'
         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
     };
 
@@ -328,24 +344,24 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Incoming Orders</h1>
-                    <p className="text-gray-600 mt-2">New pre-orders will appear here in real-time.</p>
+                    <p className="text-gray-600 mt-1">Live feed. Keep this tab open to hear alerts.</p>
                 </div>
-                {/* Visual indicator for Sound Status */}
-                {!isSoundEnabled ? (
+                
+                {/* --- TOGGLE SWITCH UI --- */}
+                <div className="flex items-center gap-3 bg-white p-3 rounded-full shadow-sm border border-gray-200">
+                    <span className={`text-sm font-bold ${isSoundEnabled ? 'text-gray-800' : 'text-gray-400'}`}>
+                        {isSoundEnabled ? 'Sound Alerts ON' : 'Sound Alerts OFF'}
+                    </span>
                     <button 
-                        onClick={enableSound}
-                        className="bg-red-600 text-white font-bold py-2 px-4 rounded-full animate-pulse hover:bg-red-700 shadow-lg flex items-center gap-2"
+                        onClick={handleToggleSound}
+                        className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${isSoundEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
                     >
-                        <Bell size={20} /> Enable Sound Alerts
+                        <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${isSoundEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
                     </button>
-                ) : (
-                    <div className="bg-green-100 text-green-800 font-medium py-2 px-4 rounded-full flex items-center gap-2 border border-green-200">
-                        <CheckCircle size={16} /> Sound Active
-                    </div>
-                )}
+                </div>
             </div>
 
             <div className="mt-8">
@@ -357,7 +373,6 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                         {orders.map(order => (
                             <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
-                                
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
                                         <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
@@ -411,7 +426,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                   <div className="bg-white p-12 rounded-lg shadow-md text-center">
                     <Inbox size={48} className="mx-auto text-gray-300" />
                     <h3 className="mt-4 text-xl font-semibold text-gray-700">No new orders yet</h3>
-                    <p className="text-gray-500 mt-1">We'll ring the alarm when a pre-order comes in!</p>
+                    <p className="text-gray-500 mt-1">Status: {isSoundEnabled ? '🔊 Alerts Active' : '🔇 Alerts Muted'}</p>
                   </div>
                 )}
             </div>
