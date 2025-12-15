@@ -715,11 +715,20 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     );
 };
 
-// --- Analytics View Component ---
+// --- [UPDATED] Analytics View Component (Transparent Breakdown) ---
+import { DollarSign, TrendingUp, CreditCard, Activity } from 'lucide-react'; // Add these to imports at the top if missing
+
 const AnalyticsView = ({ restaurantId }) => {
-    const [stats, setStats] = useState({ totalRevenue: 0, totalOrders: 0, avgOrderValue: 0 });
+    const [stats, setStats] = useState({ 
+        grossSales: 0, 
+        netEarnings: 0, 
+        totalFees: 0, 
+        totalOrders: 0 
+    });
     const [chartData, setChartData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    const MDR_PERCENTAGE = 2.301; // 1.95% + GST
 
     useEffect(() => {
         if (!restaurantId) {
@@ -727,34 +736,68 @@ const AnalyticsView = ({ restaurantId }) => {
             return;
         };
 
-        const q = query(collection(db, "orders"), where("restaurantId", "==", restaurantId), where("status", "==", "completed"));
+        const q = query(
+            collection(db, "orders"), 
+            where("restaurantId", "==", restaurantId), 
+            where("status", "==", "completed")
+        );
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const completedOrders = snapshot.docs.map(doc => doc.data());
             
-            const totalRevenue = completedOrders.reduce((sum, order) => sum + order.total, 0);
-            const totalOrders = completedOrders.length;
-            const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+            let grossSales = 0;
+            let totalFees = 0;
+            let netEarnings = 0;
 
-            setStats({ totalRevenue, totalOrders, avgOrderValue });
+            completedOrders.forEach(order => {
+                const menuValue = order.subtotal || 0; // The actual value of food
+                const customerPaid = order.total || 0; // What hit the gateway
 
+                // Fee is calculated on what customer paid (Transaction amount)
+                const fee = (customerPaid * MDR_PERCENTAGE) / 100;
+                
+                // Net = Menu Value - Fee
+                // (Assuming Snaccit pays the restaurant the full menu price for coupons/points)
+                const net = menuValue - fee;
+
+                grossSales += menuValue;
+                totalFees += fee;
+                netEarnings += net;
+            });
+
+            setStats({ 
+                grossSales, 
+                netEarnings, 
+                totalFees, 
+                totalOrders: completedOrders.length 
+            });
+
+            // Prepare Chart Data (Last 7 Days)
             const last7Days = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
                 return d.toLocaleDateString('en-CA');
             }).reverse();
 
-            const dailyRevenue = last7Days.map(dateStr => {
-                const dayRevenue = completedOrders
-                    .filter(order => order.createdAt?.toDate().toLocaleDateString('en-CA') === dateStr)
-                    .reduce((sum, order) => sum + order.total, 0);
+            const dailyData = last7Days.map(dateStr => {
+                const dayOrders = completedOrders.filter(order => 
+                    order.createdAt?.toDate().toLocaleDateString('en-CA') === dateStr
+                );
+
+                const dayNet = dayOrders.reduce((sum, order) => {
+                    const menuValue = order.subtotal || 0;
+                    const custPaid = order.total || 0;
+                    const fee = (custPaid * MDR_PERCENTAGE) / 100;
+                    return sum + (menuValue - fee);
+                }, 0);
+
                 return {
                     date: new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-                    revenue: dayRevenue,
+                    earnings: dayNet,
                 };
             });
             
-            setChartData(dailyRevenue);
+            setChartData(dailyData);
             setIsLoading(false);
         });
 
@@ -767,38 +810,93 @@ const AnalyticsView = ({ restaurantId }) => {
 
     return (
         <div>
-            <h1 className="text-3xl font-bold text-gray-800">Sales Analytics</h1>
-            <p className="text-gray-600 mt-2">Here's an overview of your performance on Snaccit.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="text-gray-500 text-sm font-medium">Total Revenue</h3>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">₹{stats.totalRevenue.toFixed(2)}</p>
+            <h1 className="text-3xl font-bold text-gray-800">Financial Performance</h1>
+            <p className="text-gray-600 mt-2">Transparent breakdown of your earnings and settlements.</p>
+            
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
+                
+                {/* 1. Gross Sales */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <p className="text-sm font-bold text-gray-400 uppercase">Gross Sales</p>
+                            <h3 className="text-2xl font-bold text-gray-800 mt-1">₹{stats.grossSales.toFixed(2)}</h3>
+                            <p className="text-xs text-gray-500 mt-1">Total Menu Value Sold</p>
+                        </div>
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><ShoppingBag size={24}/></div>
+                    </div>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="text-gray-500 text-sm font-medium">Total Completed Orders</h3>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">{stats.totalOrders}</p>
+
+                {/* 2. Fees */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <p className="text-sm font-bold text-red-400 uppercase">Gateway Fees</p>
+                            <h3 className="text-2xl font-bold text-red-500 mt-1">- ₹{stats.totalFees.toFixed(2)}</h3>
+                            <p className="text-xs text-red-300 mt-1">MDR ({MDR_PERCENTAGE}%)</p>
+                        </div>
+                        <div className="p-2 bg-red-50 rounded-lg text-red-500"><CreditCard size={24}/></div>
+                    </div>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                    <h3 className="text-gray-500 text-sm font-medium">Average Order Value</h3>
-                    <p className="text-3xl font-bold text-gray-800 mt-2">₹{stats.avgOrderValue.toFixed(2)}</p>
+
+                {/* 3. Net Earnings (Hero Card) */}
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-xl shadow-lg text-white relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-20"><DollarSign size={64}/></div>
+                    <div className="relative z-10">
+                        <p className="text-sm font-bold text-green-100 uppercase">Net Earnings</p>
+                        <h3 className="text-3xl font-black mt-1">₹{stats.netEarnings.toFixed(2)}</h3>
+                        <p className="text-xs text-green-100 mt-2 font-medium">Settlement Amount</p>
+                    </div>
+                </div>
+
+                {/* 4. Orders */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <p className="text-sm font-bold text-gray-400 uppercase">Completed Orders</p>
+                            <h3 className="text-2xl font-bold text-gray-800 mt-1">{stats.totalOrders}</h3>
+                            <p className="text-xs text-gray-500 mt-1">Succesfully delivered</p>
+                        </div>
+                        <div className="p-2 bg-gray-100 rounded-lg text-gray-600"><Activity size={24}/></div>
+                    </div>
                 </div>
             </div>
-             <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-                <h2 className="text-xl font-bold mb-4">Revenue (Last 7 Days)</h2>
+
+            {/* Information Box */}
+            <div className="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start gap-3">
+                <Info className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+                <div className="text-sm text-blue-800">
+                    <p className="font-bold">How is this calculated?</p>
+                    <p className="mt-1">
+                        <strong>Net Earnings</strong> = <strong>Gross Sales</strong> (Menu Price) - <strong>Gateway Fee</strong>.
+                    </p>
+                    <p className="mt-1 opacity-80">
+                        The Gateway Fee is {MDR_PERCENTAGE}% of the amount paid online by the customer. 
+                        Snaccit covers the cost of any Points or Coupons used, so you receive the full menu price for those items.
+                    </p>
+                </div>
+            </div>
+
+            {/* Chart */}
+             <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold mb-4 text-gray-800">Net Earnings Trend (Last 7 Days)</h2>
                 {chartData.length > 0 ? (
                     <div style={{ width: '100%', height: 300 }}>
                         <ResponsiveContainer>
                             <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis />
-                                <Tooltip formatter={(value) => `₹${value.toFixed(2)}`} />
-                                <Legend />
-                                <Line type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} activeDot={{ r: 8 }} />
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+                                <Tooltip 
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                                    formatter={(value) => [`₹${value.toFixed(2)}`, 'Net Earnings']} 
+                                />
+                                <Line type="monotone" dataKey="earnings" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981' }} activeDot={{ r: 8 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
-                ) : <p>No sales data available for the last 7 days.</p>}
+                ) : <p className="text-gray-500 italic">No sales data available for the last 7 days.</p>}
             </div>
         </div>
     );
