@@ -715,8 +715,7 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     );
 };
 
-// --- [UPDATED] Analytics View Component (Transparent Breakdown) ---
-
+// --- [FIXED] Analytics View Component (Handles Old Data) ---
 const AnalyticsView = ({ restaurantId }) => {
     const [stats, setStats] = useState({ 
         grossSales: 0, 
@@ -749,14 +748,14 @@ const AnalyticsView = ({ restaurantId }) => {
             let netEarnings = 0;
 
             completedOrders.forEach(order => {
-                const menuValue = order.subtotal || 0; // The actual value of food
-                const customerPaid = order.total || 0; // What hit the gateway
+                // FIX: Fallback to order.total if subtotal is missing (for old orders)
+                const menuValue = order.subtotal || order.total || 0; 
+                const customerPaid = order.total || 0; 
 
-                // Fee is calculated on what customer paid (Transaction amount)
+                // Fee is calculated on what customer paid
                 const fee = (customerPaid * MDR_PERCENTAGE) / 100;
                 
                 // Net = Menu Value - Fee
-                // (Assuming Snaccit pays the restaurant the full menu price for coupons/points)
                 const net = menuValue - fee;
 
                 grossSales += menuValue;
@@ -784,7 +783,7 @@ const AnalyticsView = ({ restaurantId }) => {
                 );
 
                 const dayNet = dayOrders.reduce((sum, order) => {
-                    const menuValue = order.subtotal || 0;
+                    const menuValue = order.subtotal || order.total || 0; // Fix here too
                     const custPaid = order.total || 0;
                     const fee = (custPaid * MDR_PERCENTAGE) / 100;
                     return sum + (menuValue - fee);
