@@ -1,0 +1,27 @@
+{
+
+  "appId": "com.snaccit.partner",
+
+  "appName": "Snaccit Partner",
+
+  "webDir": "build",
+
+  "server": {
+
+    "url": "https://dashboard.snaccit.com", 
+
+    "cleartext": true
+
+  },
+
+  "plugins": {
+
+    "PushNotifications": {
+
+      "presentationOptions": ["badge", "sound", "alert"]
+
+    }
+
+  }
+
+}

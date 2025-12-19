@@ -4,6 +4,9 @@ import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { KeepAwake } from '@capgo/capacitor-keep-awake';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -1019,6 +1022,53 @@ const App = () => {
       <div className="flex items-center justify-center min-h-screen bg-gray-100"><Loader2 className="animate-spin text-green-600" size={48} /></div>
     );
   }
+
+  // --- KIOSK MODE & NOTIFICATION SETUP ---
+  useEffect(() => {
+    const setupKioskMode = async () => {
+      try {
+        // 1. Prevent Screen Sleep (The "Kiosk" Feature)
+        await KeepAwake.keepAwake();
+        console.log("Kiosk Mode: Screen will not sleep.");
+
+        // 2. Request Permissions
+        let permStatus = await PushNotifications.checkPermissions();
+        if (permStatus.receive === 'prompt') {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive === 'granted') {
+          await PushNotifications.register();
+        }
+
+        // 3. Create a High-Priority Sound Channel
+        // This ensures the sound plays even if the phone is in "Do Not Disturb" or background
+        await PushNotifications.createChannel({
+            id: 'orders_channel', // MUST match the ID in your Cloud Function
+            name: 'New Orders',
+            description: 'Rings loudly when a new order arrives',
+            importance: 5, // Max importance
+            sound: 'alert', // This looks for 'alert.mp3' in res/raw
+            visibility: 1,
+            vibration: true,
+        });
+
+        // 4. Listen for Notifications (Foreground)
+        // If the app is open, we can show a nice toast or refresh data immediately
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            console.log('Push received:', notification);
+            showNotification(`🔔 ${notification.title}`, "success");
+            // Optional: You could trigger a refresh here if needed, 
+            // but your onSnapshot listener already handles the data.
+        });
+
+      } catch (error) {
+        console.error("Error setting up Kiosk Mode:", error);
+      }
+    };
+
+    setupKioskMode();
+  }, []);
 
   return (
     <>
