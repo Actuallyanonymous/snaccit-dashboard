@@ -1018,12 +1018,6 @@ const App = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100"><Loader2 className="animate-spin text-green-600" size={48} /></div>
-    );
-  }
-
   // --- KIOSK MODE & NOTIFICATION SETUP ---
   useEffect(() => {
     const setupKioskMode = async () => {
@@ -1074,6 +1068,12 @@ const App = () => {
 
     setupKioskMode();
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100"><Loader2 className="animate-spin text-green-600" size={48} /></div>
+    );
+  }
 
   return (
     <>
