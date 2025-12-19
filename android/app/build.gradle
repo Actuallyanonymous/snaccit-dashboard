@@ -4,7 +4,7 @@ android {
     namespace = "com.snaccit.dashboard"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.snaccit.dashboard"
+        applicationId "com.snaccit.partner"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

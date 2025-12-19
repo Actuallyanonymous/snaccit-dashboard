@@ -8,6 +8,7 @@ import { KeepAwake } from '@capgo/capacitor-keep-awake';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
+import { AppState } from '@capacitor/app';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -299,37 +300,55 @@ const OrdersView = ({ restaurantId, showNotification }) => {
     useEffect(() => {
         if (!restaurantId) { setIsLoading(false); return; };
 
+        // 1. Define Query
         const q = query(collection(db, "orders"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
         
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const ordersData = querySnapshot.docs.map(doc => ({
-                id: doc.id, ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-            }));
-            setOrders(ordersData);
-            setIsLoading(false);
+        // 2. Define Listener Logic
+        let unsubscribe = null;
+        
+        const startListener = () => {
+             // If a listener already exists, kill it first to avoid duplicates
+             if (unsubscribe) unsubscribe();
 
-            // Update the Ref so our Visibility Listener knows the truth
-            const hasPending = ordersData.some(order => order.status === 'pending');
-            hasPendingRef.current = hasPending;
+             unsubscribe = onSnapshot(q, (querySnapshot) => {
+                const ordersData = querySnapshot.docs.map(doc => ({
+                    id: doc.id, ...doc.data(),
+                    createdAt: doc.data().createdAt?.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+                }));
+                setOrders(ordersData);
+                setIsLoading(false);
 
-            if (hasPending && isSoundEnabled) {
-                // Use a promise to safely check if playing
-                const playPromise = audioRef.current.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(error => {
-                        console.log("Auto-play prevented (Background limitation):", error);
-                    });
+                // Sound Logic
+                const hasPending = ordersData.some(order => order.status === 'pending');
+                hasPendingRef.current = hasPending;
+
+                if (hasPending && isSoundEnabled) {
+                     // Safe play attempt
+                    audioRef.current.play().catch(e => console.log("Autoplay blocked:", e));
+                } else {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
                 }
-            } else {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
+            });
+        };
+
+        // 3. Start listening immediately (First Load)
+        startListener();
+
+        // 4. THE FIX: Listen for "App Resume" (When user opens app from background)
+        const appStateListener = AppState.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) {
+                console.log("App woke up! Forcing data refresh...");
+                setIsLoading(true); // Show loader briefly so user knows it's updating
+                startListener();    // Restart the listener to fetch new data immediately
             }
-        }, (error) => {
-            console.error("Error fetching orders: ", error);
-            setIsLoading(false);
         });
-        return () => unsubscribe();
+
+        // 5. Cleanup
+        return () => {
+            if (unsubscribe) unsubscribe();
+            appStateListener.then(f => f.remove());
+        };
     }, [restaurantId, isSoundEnabled]);
 
     const handleUpdateStatus = async (orderId, newStatus) => {
