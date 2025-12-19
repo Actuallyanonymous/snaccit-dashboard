@@ -7,6 +7,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { KeepAwake } from '@capgo/capacitor-keep-awake';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -1026,6 +1027,10 @@ const App = () => {
   // --- KIOSK MODE & NOTIFICATION SETUP ---
   useEffect(() => {
     const setupKioskMode = async () => {
+
+        if (!Capacitor.isNativePlatform()) {
+        return; 
+      }
       try {
         // 1. Prevent Screen Sleep (The "Kiosk" Feature)
         await KeepAwake.keepAwake();
