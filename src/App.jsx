@@ -8,7 +8,7 @@ import { KeepAwake } from '@capgo/capacitor-keep-awake';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -336,13 +336,13 @@ const OrdersView = ({ restaurantId, showNotification }) => {
         startListener();
 
         // 4. THE FIX: Listen for "App Resume" (When user opens app from background)
-        const appStateListener = App.addListener('appStateChange', ({ isActive }) => {
-            if (isActive) {
-                console.log("App woke up! Forcing data refresh...");
-                setIsLoading(true); // Show loader briefly so user knows it's updating
-                startListener();    // Restart the listener to fetch new data immediately
-            }
-        });
+       const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    if (isActive) {
+        console.log("App woke up! Forcing data refresh...");
+        setIsLoading(true);
+        startListener();
+    }
+});
 
         // 5. Cleanup
         return () => {
