@@ -9,6 +9,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -462,10 +463,11 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 };
 
 
-// --- Menu Item Modal ---
+// --- [UPDATED] Menu Item Modal with Image Upload ---
 const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }) => {
     const defaultItem = { name: '', description: '', isVeg: true, sizes: [{ name: 'Regular', price: '', isAvailable: true }], addons: [], imageUrl: '' };
     const [item, setItem] = useState(itemToEdit || defaultItem);
+    const [isUploading, setIsUploading] = useState(false); // Loading state for upload
 
     useEffect(() => {
         setItem(itemToEdit || defaultItem);
@@ -474,6 +476,49 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
     const handleItemChange = (e) => {
         const { name, value, type, checked } = e.target;
         setItem(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    };
+
+    // --- NEW: Handle Image Selection & Upload ---
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 1. Basic Validation
+        if (!file.type.startsWith('image/')) {
+            showNotification("Please upload a valid image file (PNG, JPG).", "error");
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) { // 2MB Limit
+            showNotification("Image is too large. Max size is 2MB.", "error");
+            return;
+        }
+
+        setIsUploading(true);
+
+        try {
+            // 2. Initialize Storage
+            const storage = getStorage();
+            
+            // 3. Create a unique path: menu_items/TIMESTAMP_FILENAME
+            // This prevents overwriting files with the same name
+            const storageRef = ref(storage, `menu_items/${Date.now()}_${file.name}`);
+
+            // 4. Upload the file
+            await uploadBytes(storageRef, file);
+
+            // 5. Get the permanent URL
+            const downloadURL = await getDownloadURL(storageRef);
+
+            // 6. Save URL to state (so it saves to Firestore later)
+            setItem(prev => ({ ...prev, imageUrl: downloadURL }));
+            showNotification("Image uploaded successfully!", "success");
+
+        } catch (error) {
+            console.error("Upload failed:", error);
+            showNotification("Failed to upload image. Please try again.", "error");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleSizeChange = (index, field, value) => {
@@ -536,10 +581,52 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
                         <label className="block text-sm font-medium">Description</label>
                         <textarea name="description" value={item.description} onChange={handleItemChange} rows="3" className="mt-1 w-full border rounded-md p-2"></textarea>
                     </div>
-                     <div>
-                        <label className="block text-sm font-medium">Item Image URL</label>
-                        <input type="text" name="imageUrl" value={item.imageUrl} onChange={handleItemChange} className="mt-1 w-full border rounded-md p-2"/>
+
+                    {/* --- NEW IMAGE UPLOADER UI --- */}
+                    <div className="border p-4 rounded-md bg-gray-50">
+                        <label className="block text-sm font-medium mb-2">Item Image</label>
+                        <div className="flex items-center gap-4">
+                            {/* Image Preview Box */}
+                            <div className="w-24 h-24 bg-gray-200 rounded-md overflow-hidden flex items-center justify-center border border-gray-300">
+                                {isUploading ? (
+                                    <Loader2 className="animate-spin text-green-600" />
+                                ) : item.imageUrl ? (
+                                    <img src={item.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="text-xs text-gray-500">No Image</span>
+                                )}
+                            </div>
+
+                            {/* Controls */}
+                            <div className="flex-1">
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={handleImageUpload} 
+                                    className="block w-full text-sm text-slate-500
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-full file:border-0
+                                      file:text-sm file:font-semibold
+                                      file:bg-green-100 file:text-green-700
+                                      hover:file:bg-green-200
+                                      cursor-pointer"
+                                />
+                                <p className="text-xs text-gray-500 mt-2">Max size: 2MB. Formats: JPG, PNG.</p>
+                                
+                                {/* Fallback URL input if they still want to paste manually */}
+                                <input 
+                                    type="text" 
+                                    name="imageUrl" 
+                                    value={item.imageUrl} 
+                                    onChange={handleItemChange} 
+                                    placeholder="Or paste image URL here..." 
+                                    className="mt-2 w-full border rounded-md p-2 text-xs bg-white"
+                                />
+                            </div>
+                        </div>
                     </div>
+                    {/* ----------------------------- */}
+
                     <div>
                         <label className="flex items-center gap-2"><input type="checkbox" name="isVeg" checked={item.isVeg} onChange={handleItemChange} className="form-checkbox h-4 w-4 text-green-600"/> Is this a vegetarian item?</label>
                     </div>
@@ -570,7 +657,9 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
                 </div>
                 <div className="p-4 border-t bg-gray-50 flex justify-end">
                     <button onClick={onClose} className="mr-2 bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300">Cancel</button>
-                    <button onClick={handleSave} className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Item</button>
+                    <button onClick={handleSave} disabled={isUploading} className={`font-semibold py-2 px-4 rounded-lg ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}>
+                        {isUploading ? 'Uploading...' : 'Save Item'}
+                    </button>
                 </div>
             </div>
         </div>

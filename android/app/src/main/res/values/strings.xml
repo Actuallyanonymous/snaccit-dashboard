@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SnaccitDashboard</string>
-    <string name="title_activity_main">SnaccitDashboard</string>
+    <string name="app_name">Snaccit Partners</string>
+    <string name="title_activity_main">Snaccit Partners</string>
     <string name="package_name">com.snaccit.dashboard</string>
     <string name="custom_url_scheme">com.snaccit.dashboard</string>
 </resources>
