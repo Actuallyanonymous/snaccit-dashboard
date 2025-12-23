@@ -3,13 +3,14 @@ import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, Che
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { KeepAwake } from '@capgo/capacitor-keep-awake';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -827,25 +828,26 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     );
 };
 
-// --- [FIXED] Analytics View Component (Handles Old Data) ---
+// --- [UPGRADED] Analytics View Component ---
 const AnalyticsView = ({ restaurantId }) => {
     const [stats, setStats] = useState({ 
         grossSales: 0, 
         netEarnings: 0, 
-        totalFees: 0, 
-        totalOrders: 0 
+        feesCovered: 0, 
+        totalOrders: 0,
+        avgOrderValue: 0
     });
-    const [chartData, setChartData] = useState([]);
+    const [salesTrend, setSalesTrend] = useState([]);
+    const [peakHours, setPeakHours] = useState([]);
+    const [topItems, setTopItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const MDR_PERCENTAGE = 2.301; // 1.95% + GST
+    const MDR_PERCENTAGE = 2.301; // The fee Snaccit absorbs
 
     useEffect(() => {
-        if (!restaurantId) {
-            setIsLoading(false);
-            return;
-        };
+        if (!restaurantId) { setIsLoading(false); return; };
 
+        // Fetch completed orders
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", restaurantId), 
@@ -853,61 +855,84 @@ const AnalyticsView = ({ restaurantId }) => {
         );
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const completedOrders = snapshot.docs.map(doc => doc.data());
+            const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
             let grossSales = 0;
-            let totalFees = 0;
-            let netEarnings = 0;
+            let feesCovered = 0;
+            let hourlyCounts = Array(24).fill(0);
+            let itemCounts = {};
 
-            completedOrders.forEach(order => {
-                // FIX: Fallback to order.total if subtotal is missing (for old orders)
-                const menuValue = order.subtotal || order.total || 0; 
-                const customerPaid = order.total || 0; 
+            orders.forEach(order => {
+                const orderTotal = order.subtotal || order.total || 0;
+                const paidAmount = order.total || 0;
 
-                // Fee is calculated on what customer paid
-                const fee = (customerPaid * MDR_PERCENTAGE) / 100;
+                // 1. Financials
+                grossSales += orderTotal;
                 
-                // Net = Menu Value - Fee
-                const net = menuValue - fee;
+                // You pay this, not them. We calculate it to show them what they saved.
+                feesCovered += (paidAmount * MDR_PERCENTAGE) / 100;
 
-                grossSales += menuValue;
-                totalFees += fee;
-                netEarnings += net;
+                // 2. Peak Hours Analysis
+                if (order.createdAt && order.createdAt.toDate) {
+                    const hour = order.createdAt.toDate().getHours();
+                    hourlyCounts[hour] += 1;
+                }
+
+                // 3. Top Items Analysis
+                if (order.items && Array.isArray(order.items)) {
+                    order.items.forEach(item => {
+                        if (itemCounts[item.name]) {
+                            itemCounts[item.name] += item.quantity;
+                        } else {
+                            itemCounts[item.name] = item.quantity;
+                        }
+                    });
+                }
             });
 
-            setStats({ 
-                grossSales, 
-                netEarnings, 
-                totalFees, 
-                totalOrders: completedOrders.length 
-            });
+            // --- Process Data for Charts ---
 
-            // Prepare Chart Data (Last 7 Days)
+            // A. Daily Sales Trend (Last 7 Days)
             const last7Days = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
-                return d.toLocaleDateString('en-CA');
+                return d.toLocaleDateString('en-CA'); // YYYY-MM-DD
             }).reverse();
 
             const dailyData = last7Days.map(dateStr => {
-                const dayOrders = completedOrders.filter(order => 
-                    order.createdAt?.toDate().toLocaleDateString('en-CA') === dateStr
+                const dayOrders = orders.filter(o => 
+                    o.createdAt?.toDate().toLocaleDateString('en-CA') === dateStr
                 );
-
-                const dayNet = dayOrders.reduce((sum, order) => {
-                    const menuValue = order.subtotal || order.total || 0; // Fix here too
-                    const custPaid = order.total || 0;
-                    const fee = (custPaid * MDR_PERCENTAGE) / 100;
-                    return sum + (menuValue - fee);
-                }, 0);
-
+                const dayTotal = dayOrders.reduce((sum, o) => sum + (o.subtotal || o.total || 0), 0);
                 return {
-                    date: new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-                    earnings: dayNet,
+                    date: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' }), // Mon, Tue
+                    sales: dayTotal
                 };
             });
-            
-            setChartData(dailyData);
+
+            // B. Peak Hours Data (Filter out zero-order hours to clean up chart)
+            const peakHoursData = hourlyCounts.map((count, hour) => ({
+                hour: `${hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`,
+                orders: count
+            })).filter(h => h.orders > 0);
+
+            // C. Top Items Data (Sort and take top 5)
+            const topItemsData = Object.entries(itemCounts)
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5);
+
+            setStats({ 
+                grossSales, 
+                netEarnings: grossSales, // Net = Gross (Since you cover fees)
+                feesCovered, 
+                totalOrders: orders.length,
+                avgOrderValue: orders.length > 0 ? grossSales / orders.length : 0
+            });
+
+            setSalesTrend(dailyData);
+            setPeakHours(peakHoursData);
+            setTopItems(topItemsData);
             setIsLoading(false);
         });
 
@@ -919,94 +944,141 @@ const AnalyticsView = ({ restaurantId }) => {
     }
 
     return (
-        <div>
-            <h1 className="text-3xl font-bold text-gray-800">Financial Performance</h1>
-            <p className="text-gray-600 mt-2">Transparent breakdown of your earnings and settlements.</p>
+        <div className="space-y-8">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-800">Business Insights</h1>
+                <p className="text-gray-600 mt-1">Track your growth, earnings, and customer trends.</p>
+            </div>
             
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
+            {/* --- 1. KEY METRICS CARDS --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 
-                {/* 1. Gross Sales */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+                {/* Net Earnings (Hero Card) */}
+                <div className="bg-gradient-to-br from-green-600 to-emerald-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
+                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Net Payout</p>
+                    <h3 className="text-3xl font-black mt-2">₹{stats.netEarnings.toFixed(0)}</h3>
+                    <p className="text-xs text-green-200 mt-2 flex items-center gap-1">
+                        <CheckCircle size={12}/> 100% Settlement
+                    </p>
+                </div>
+
+                {/* Fees Sponsored (Psychological Win) */}
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
+                    <p className="text-indigo-100 font-medium text-sm uppercase tracking-wider">Fees Waived</p>
+                    <h3 className="text-3xl font-black mt-2">₹{stats.feesCovered.toFixed(0)}</h3>
+                    <p className="text-xs text-indigo-200 mt-2 font-medium">
+                        Covered by Snaccit Partner
+                    </p>
+                </div>
+
+                {/* Total Orders */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex justify-between items-start">
                         <div>
-                            <p className="text-sm font-bold text-gray-400 uppercase">Gross Sales</p>
-                            <h3 className="text-2xl font-bold text-gray-800 mt-1">₹{stats.grossSales.toFixed(2)}</h3>
-                            <p className="text-xs text-gray-500 mt-1">Total Menu Value Sold</p>
+                            <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Total Orders</p>
+                            <h3 className="text-3xl font-bold text-gray-800 mt-2">{stats.totalOrders}</h3>
                         </div>
-                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><ShoppingBag size={24}/></div>
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Activity size={24}/></div>
                     </div>
                 </div>
 
-                {/* 2. Fees */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden">
+                {/* Average Order Value */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex justify-between items-start">
                         <div>
-                            <p className="text-sm font-bold text-red-400 uppercase">Gateway Fees</p>
-                            <h3 className="text-2xl font-bold text-red-500 mt-1">- ₹{stats.totalFees.toFixed(2)}</h3>
-                            <p className="text-xs text-red-300 mt-1">MDR ({MDR_PERCENTAGE}%)</p>
+                            <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Avg. Order Value</p>
+                            <h3 className="text-3xl font-bold text-gray-800 mt-2">₹{stats.avgOrderValue.toFixed(0)}</h3>
                         </div>
-                        <div className="p-2 bg-red-50 rounded-lg text-red-500"><CreditCard size={24}/></div>
-                    </div>
-                </div>
-
-                {/* 3. Net Earnings (Hero Card) */}
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-xl shadow-lg text-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-20"><DollarSign size={64}/></div>
-                    <div className="relative z-10">
-                        <p className="text-sm font-bold text-green-100 uppercase">Net Earnings</p>
-                        <h3 className="text-3xl font-black mt-1">₹{stats.netEarnings.toFixed(2)}</h3>
-                        <p className="text-xs text-green-100 mt-2 font-medium">Settlement Amount</p>
-                    </div>
-                </div>
-
-                {/* 4. Orders */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-sm font-bold text-gray-400 uppercase">Completed Orders</p>
-                            <h3 className="text-2xl font-bold text-gray-800 mt-1">{stats.totalOrders}</h3>
-                            <p className="text-xs text-gray-500 mt-1">Succesfully delivered</p>
-                        </div>
-                        <div className="p-2 bg-gray-100 rounded-lg text-gray-600"><Activity size={24}/></div>
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp size={24}/></div>
                     </div>
                 </div>
             </div>
 
-            {/* Information Box */}
-            <div className="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-lg flex items-start gap-3">
-                <Info className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
-                <div className="text-sm text-blue-800">
-                    <p className="font-bold">How is this calculated?</p>
-                    <p className="mt-1">
-                        <strong>Net Earnings</strong> = <strong>Gross Sales</strong> (Menu Price) - <strong>Gateway Fee</strong>.
-                    </p>
-                    <p className="mt-1 opacity-80">
-                        The Gateway Fee is {MDR_PERCENTAGE}% of the amount paid online by the customer. 
-                        Snaccit covers the cost of any Points or Coupons used, so you receive the full menu price for those items.
-                    </p>
-                </div>
-            </div>
-
-            {/* Chart */}
-             <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 className="text-xl font-bold mb-4 text-gray-800">Net Earnings Trend (Last 7 Days)</h2>
-                {chartData.length > 0 ? (
-                    <div style={{ width: '100%', height: 300 }}>
-                        <ResponsiveContainer>
-                            <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
+            {/* --- 2. CHARTS ROW --- */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Sales Trend Chart */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 className="text-lg font-bold text-gray-800 mb-6">Revenue Trend (7 Days)</h2>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={salesTrend}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} dy={10} />
                                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
-                                <Tooltip 
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                    formatter={(value) => [`₹${value.toFixed(2)}`, 'Net Earnings']} 
-                                />
-                                <Line type="monotone" dataKey="earnings" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981' }} activeDot={{ r: 8 }} />
+                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
+                                <Line type="monotone" dataKey="sales" stroke="#10B981" strokeWidth={4} dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
-                ) : <p className="text-gray-500 italic">No sales data available for the last 7 days.</p>}
+                </div>
+
+                {/* Peak Hours Chart */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 className="text-lg font-bold text-gray-800 mb-6">Peak Order Hours</h2>
+                    {peakHours.length > 0 ? (
+                        <div className="h-64 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={peakHours}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                                    <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 11}} dy={10} />
+                                    <Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                                    <Bar dataKey="orders" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={30} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="h-64 flex flex-col items-center justify-center text-gray-400">
+                            <Activity size={48} className="mb-2 opacity-20"/>
+                            <p>Not enough data yet</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* --- 3. TOP ITEMS SECTION --- */}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">🔥 Top Selling Items</h2>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="border-b border-gray-100 text-gray-400 text-sm">
+                                <th className="pb-3 font-semibold">Item Name</th>
+                                <th className="pb-3 font-semibold text-right">Quantity Sold</th>
+                                <th className="pb-3 font-semibold text-right">Popularity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {topItems.length > 0 ? (
+                                topItems.map((item, index) => (
+                                    <tr key={index} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                        <td className="py-4 font-medium text-gray-800 flex items-center gap-3">
+                                            <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
+                                                {index + 1}
+                                            </span>
+                                            {item.name}
+                                        </td>
+                                        <td className="py-4 text-right text-gray-600 font-bold">{item.count}</td>
+                                        <td className="py-4 text-right">
+                                            <div className="w-24 h-2 bg-gray-100 rounded-full ml-auto overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-green-500 rounded-full" 
+                                                    style={{ width: `${(item.count / topItems[0].count) * 100}%` }}
+                                                ></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="3" className="py-8 text-center text-gray-400">No items sold yet.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );
