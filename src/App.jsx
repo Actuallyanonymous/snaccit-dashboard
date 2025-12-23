@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogIn, BarChart, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
+import { LogIn, BarChart as BarChartIcon, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
@@ -1278,7 +1278,7 @@ const App = () => {
                     <ul className="py-4">
                         <li onClick={() => handleSetView('orders')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'orders' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><UtensilsCrossed className="mr-3" size={20}/> Incoming Orders</li>
                         <li onClick={() => handleSetView('reviews')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'reviews' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageSquare className="mr-3" size={20}/> Reviews</li>
-                        <li onClick={() => handleSetView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChart className="mr-3" size={20}/> Analytics</li>
+                        <li onClick={() => handleSetView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChartIcon className="mr-3" size={20}/> Analytics</li>
                         <li onClick={() => handleSetView('settings')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'settings' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><Settings className="mr-3" size={20}/> Settings</li>
                     </ul>
                     <div className="absolute bottom-0 w-full p-6 border-t">
