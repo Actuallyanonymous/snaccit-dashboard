@@ -240,7 +240,7 @@ const SkeletonOrderCard = () => (
     </div>
 );
 
-// --- Orders View Component (Grouped & Timestamped) ---
+// --- Orders View Component (Reordered: Active -> Completed -> Failed) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -457,17 +457,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                         )}
                     </div>
 
-                    {/* SECTION 2: PAYMENT ISSUES (Only show if exists) */}
-                    {issueOrders.length > 0 && (
-                        <div>
-                            <h2 className="text-xl font-bold text-red-700 mb-4 flex items-center"><Info className="mr-2"/> Payment Issues ({issueOrders.length})</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 opacity-80">
-                                {issueOrders.map(renderOrderCard)}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* SECTION 3: COMPLETED ORDERS */}
+                    {/* SECTION 2: COMPLETED ORDERS (Now appearing second) */}
                     <div>
                         <h2 className="text-xl font-bold text-gray-500 mb-4 flex items-center"><Clock className="mr-2"/> Past Orders</h2>
                         {completedOrders.length > 0 ? (
@@ -478,6 +468,16 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                             <p className="text-gray-400 text-sm italic">No completed history yet.</p>
                         )}
                     </div>
+
+                    {/* SECTION 3: PAYMENT ISSUES (Now appearing last) */}
+                    {issueOrders.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-bold text-red-700 mb-4 flex items-center"><Info className="mr-2"/> Payment Issues ({issueOrders.length})</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 opacity-80">
+                                {issueOrders.map(renderOrderCard)}
+                            </div>
+                        </div>
+                    )}
 
                 </div>
             ) : (
