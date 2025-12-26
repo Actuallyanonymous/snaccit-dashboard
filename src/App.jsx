@@ -240,11 +240,10 @@ const SkeletonOrderCard = () => (
     </div>
 );
 
-// --- Orders View Component (Robust Audio Fix) ---
+// --- Orders View Component (Grouped & Timestamped) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    // Track pending state in a ref so event listeners can access the latest value without re-binding
     const hasPendingRef = React.useRef(false); 
     
     const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
@@ -253,20 +252,19 @@ const OrdersView = ({ restaurantId, showNotification }) => {
     
     const audioRef = React.useRef(new Audio('/alert.mp3')); 
 
+    // --- Audio Logic (Keep Alive & Resume) ---
     useEffect(() => {
         audioRef.current.loop = true;
         audioRef.current.volume = 1.0;
 
-        // --- NEW: Force Resume on Tab Focus ---
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && hasPendingRef.current && isSoundEnabled) {
-                console.log("Tab focused & pending order exists: Resuming Alarm.");
                 audioRef.current.play().catch(e => console.log("Resume failed:", e));
             }
         };
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
-        window.addEventListener("focus", handleVisibilityChange); // Extra backup for window focus
+        window.addEventListener("focus", handleVisibilityChange);
 
         return () => {
             audioRef.current.pause();
@@ -283,15 +281,12 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 
         if (newState) {
             audioRef.current.play().then(() => {
-                // Determine if we should keep playing or stop based on current orders
                 if (!hasPendingRef.current) {
                     audioRef.current.pause();
                     audioRef.current.currentTime = 0;
                 }
                 showNotification("Sound alerts ON", "success");
-            }).catch(() => {
-                showNotification("Tap anywhere to enable audio.", "info");
-            });
+            }).catch(() => showNotification("Tap anywhere to enable audio.", "info"));
         } else {
             audioRef.current.pause();
             audioRef.current.currentTime = 0;
@@ -299,24 +294,32 @@ const OrdersView = ({ restaurantId, showNotification }) => {
         }
     };
 
+    // --- Order Fetching Logic ---
     useEffect(() => {
         if (!restaurantId) { setIsLoading(false); return; };
 
-        // 1. Define Query
         const q = query(collection(db, "orders"), where("restaurantId", "==", restaurantId), orderBy("createdAt", "desc"));
         
-        // 2. Define Listener Logic
         let unsubscribe = null;
         
         const startListener = () => {
-             // If a listener already exists, kill it first to avoid duplicates
              if (unsubscribe) unsubscribe();
 
              unsubscribe = onSnapshot(q, (querySnapshot) => {
-                const ordersData = querySnapshot.docs.map(doc => ({
-                    id: doc.id, ...doc.data(),
-                    createdAt: doc.data().createdAt?.toDate().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-                }));
+                const ordersData = querySnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    // Format Timestamp (e.g., "12 Oct, 1:45 PM")
+                    const dateObj = data.createdAt?.toDate();
+                    const dateStr = dateObj ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+                    const timeStr = dateObj ? dateObj.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '';
+                    
+                    return {
+                        id: doc.id, 
+                        ...data,
+                        placedAtDisplay: `${dateStr}, ${timeStr}` // Formatted string for UI
+                    };
+                });
+                
                 setOrders(ordersData);
                 setIsLoading(false);
 
@@ -325,7 +328,6 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                 hasPendingRef.current = hasPending;
 
                 if (hasPending && isSoundEnabled) {
-                     // Safe play attempt
                     audioRef.current.play().catch(e => console.log("Autoplay blocked:", e));
                 } else {
                     audioRef.current.pause();
@@ -334,19 +336,16 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             });
         };
 
-        // 3. Start listening immediately (First Load)
         startListener();
 
-        // 4. THE FIX: Listen for "App Resume" (When user opens app from background)
-       const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) {
-        console.log("App woke up! Forcing data refresh...");
-        setIsLoading(true);
-        startListener();
-    }
-});
+        const appStateListener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) {
+                console.log("App woke up! Forcing data refresh...");
+                setIsLoading(true);
+                startListener();
+            }
+        });
 
-        // 5. Cleanup
         return () => {
             if (unsubscribe) unsubscribe();
             appStateListener.then(f => f.remove());
@@ -354,14 +353,11 @@ const OrdersView = ({ restaurantId, showNotification }) => {
     }, [restaurantId, isSoundEnabled]);
 
     const handleUpdateStatus = async (orderId, newStatus) => {
-        // Optimistically update local state to stop ringing instantly
         hasPendingRef.current = false; 
         audioRef.current.pause();
         await updateDoc(doc(db, "orders", orderId), { status: newStatus });
     };
 
-    // ... (Keep your existing statusStyles object and JSX return exactly the same)
-    // Just ensure you use the updated handleUpdateStatus logic inside the JSX
     const statusStyles = {
         awaiting_payment: { borderColor: 'border-gray-400', bgColor: 'bg-gray-100', textColor: 'text-gray-600' },
         payment_failed: { borderColor: 'border-red-500', bgColor: 'bg-red-50', textColor: 'text-red-700' },
@@ -373,8 +369,58 @@ const OrdersView = ({ restaurantId, showNotification }) => {
         completed: { borderColor: 'border-gray-500', bgColor: 'bg-gray-50', textColor: 'text-gray-700' }
     };
 
+    // --- GROUPING LOGIC ---
+    const activeOrders = orders.filter(o => ['pending', 'accepted', 'preparing', 'ready'].includes(o.status));
+    const issueOrders = orders.filter(o => ['payment_failed', 'awaiting_payment'].includes(o.status));
+    const completedOrders = orders.filter(o => ['completed', 'declined'].includes(o.status));
+
+    const renderOrderCard = (order) => (
+        <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
+            <div className="flex justify-between items-start mb-4">
+                <div>
+                    <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
+                    <p className="text-sm font-medium text-gray-600">{order.userPhone || order.userEmail || 'N/A'}</p>
+                    {/* Timestamp Display */}
+                    <p className="text-xs text-gray-400 mt-1">Placed: {order.placedAtDisplay}</p>
+                </div>
+                <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
+            </div>
+            <div className="mb-4">
+                {order.items.map((item, index) => (
+                    <div key={index} className="text-gray-700 flex justify-between items-start border-b border-gray-100 last:border-0 py-1">
+                        <span className="font-medium">{item.quantity} x {item.name} <span className="text-xs text-gray-500 font-normal">{item.size ? `(${item.size})` : ''} {item.addons && item.addons.length > 0 ? `+ ${item.addons.join(', ')}` : ''}</span></span>
+                    </div>
+                ))}
+            </div>
+            <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-gray-800 text-lg">₹{order.total.toFixed(2)}</span>
+                    <span className="flex items-center font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md"><Clock size={16} className="mr-2"/>{order.arrivalTime}</span>
+                </div>
+                
+                {/* Action Buttons based on Status */}
+                {order.status === 'pending' && (
+                    <div className="mt-4 flex space-x-2">
+                        <button onClick={() => handleUpdateStatus(order.id, 'accepted')} className="flex-1 flex items-center justify-center bg-green-500 text-white font-semibold py-3 rounded-lg hover:bg-green-600 shadow-lg transform active:scale-95 transition-transform"><CheckCircle size={18} className="mr-2"/>Accept</button>
+                        <button onClick={() => handleUpdateStatus(order.id, 'declined')} className="flex-1 flex items-center justify-center bg-gray-200 text-gray-700 font-semibold py-3 rounded-lg hover:bg-gray-300"><XCircle size={18} className="mr-2"/>Decline</button>
+                    </div>
+                )}
+                {order.status === 'accepted' && (
+                    <button onClick={() => handleUpdateStatus(order.id, 'preparing')} className="mt-4 w-full flex items-center justify-center bg-blue-500 text-white font-semibold py-3 rounded-lg hover:bg-blue-600"><ChefHat size={18} className="mr-2"/>Start Preparing</button>
+                )}
+                {order.status === 'preparing' && (
+                    <button onClick={() => handleUpdateStatus(order.id, 'ready')} className="mt-4 w-full flex items-center justify-center bg-indigo-500 text-white font-semibold py-3 rounded-lg hover:bg-indigo-600"><Bell size={18} className="mr-2"/>Mark Ready</button>
+                )}
+                {order.status === 'ready' && (
+                    <button onClick={() => handleUpdateStatus(order.id, 'completed')} className="mt-4 w-full flex items-center justify-center bg-green-600 text-white font-semibold py-3 rounded-lg hover:bg-green-700"><CheckCircle size={18} className="mr-2"/>Complete Order</button>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <div>
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Incoming Orders</h1>
@@ -382,83 +428,65 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                 </div>
                 <div className="flex items-center gap-3 bg-white p-3 rounded-full shadow-sm border border-gray-200">
                     <span className={`text-sm font-bold ${isSoundEnabled ? 'text-gray-800' : 'text-gray-400'}`}>
-                        {isSoundEnabled ? 'Sound Alerts ON' : 'Sound Alerts OFF'}
+                        {isSoundEnabled ? 'Sound ON' : 'Sound OFF'}
                     </span>
-                    <button 
-                        onClick={handleToggleSound}
-                        className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${isSoundEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
-                    >
+                    <button onClick={handleToggleSound} className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none ${isSoundEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
                         <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${isSoundEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
                     </button>
                 </div>
             </div>
 
-            <div className="mt-8">
-                {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        <SkeletonOrderCard /><SkeletonOrderCard /><SkeletonOrderCard />
-                    </div>
-                ) : orders.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {orders.map(order => (
-                            <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
-                                        <p className="text-sm font-medium text-gray-600">{order.userPhone || order.userEmail || 'N/A'}</p>
-                                        {order.userName && order.userEmail && order.userPhone && (
-                                             <p className="text-xs text-gray-400 truncate">{order.userEmail}</p>
-                                        )}
-                                    </div>
-                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
-                                </div>
-                                <div className="mb-4">
-                                    {order.items.map((item, index) => (
-                                        <div key={index} className="text-gray-700">
-                                            <span>{item.quantity} x {item.name}</span>
-                                            {item.size && <span className="text-xs text-gray-500"> ({item.size})</span>}
-                                            {item.addons && item.addons.length > 0 && <span className="text-xs text-gray-500"> + {item.addons.join(', ')}</span>}
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="border-t pt-4">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="font-bold text-gray-800">Total: ₹{order.total.toFixed(2)}</span>
-                                        <span className="flex items-center font-bold text-blue-600"><Clock size={16} className="mr-2"/>{order.arrivalTime}</span>
-                                    </div>
-                                    {order.status === 'pending' && (
-                                        <div className="mt-4 flex space-x-2">
-                                            <button onClick={() => handleUpdateStatus(order.id, 'accepted')} className="flex-1 flex items-center justify-center bg-green-500 text-white font-semibold py-2 rounded-lg hover:bg-green-600 shadow-lg transform active:scale-95 transition-transform"><CheckCircle size={16} className="mr-2"/>Accept</button>
-                                            <button onClick={() => handleUpdateStatus(order.id, 'declined')} className="flex-1 flex items-center justify-center bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg hover:bg-gray-300"><XCircle size={16} className="mr-2"/>Decline</button>
-                                        </div>
-                                    )}
-                                    {order.status === 'accepted' && (
-                                        <div className="mt-4">
-                                            <button onClick={() => handleUpdateStatus(order.id, 'preparing')} className="w-full flex items-center justify-center bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600"><ChefHat size={16} className="mr-2"/>Start Preparing</button>
-                                        </div>
-                                    )}
-                                    {order.status === 'preparing' && (
-                                        <div className="mt-4">
-                                            <button onClick={() => handleUpdateStatus(order.id, 'ready')} className="w-full flex items-center justify-center bg-indigo-500 text-white font-semibold py-2 rounded-lg hover:bg-indigo-600"><Bell size={16} className="mr-2"/>Ready for Pickup</button>
-                                        </div>
-                                    )}
-                                     {order.status === 'ready' && (
-                                        <div className="mt-4">
-                                            <button onClick={() => handleUpdateStatus(order.id, 'completed')} className="w-full flex items-center justify-center bg-gray-500 text-white font-semibold py-2 rounded-lg hover:bg-gray-600"><CheckCircle size={16} className="mr-2"/>Mark as Completed</button>
-                                        </div>
-                                    )}
-                                </div>
+            {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <SkeletonOrderCard /><SkeletonOrderCard /><SkeletonOrderCard />
+                </div>
+            ) : orders.length > 0 ? (
+                <div className="space-y-12">
+                    
+                    {/* SECTION 1: ACTIVE ORDERS */}
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center"><UtensilsCrossed className="mr-2 text-green-600"/> Active Orders ({activeOrders.length})</h2>
+                        {activeOrders.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {activeOrders.map(renderOrderCard)}
                             </div>
-                        ))}
+                        ) : (
+                            <div className="bg-gray-50 border-dashed border-2 border-gray-200 rounded-xl p-8 text-center text-gray-400">
+                                <p>No active orders right now.</p>
+                            </div>
+                        )}
                     </div>
-                ) : (
-                  <div className="bg-white p-12 rounded-lg shadow-md text-center">
+
+                    {/* SECTION 2: PAYMENT ISSUES (Only show if exists) */}
+                    {issueOrders.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-bold text-red-700 mb-4 flex items-center"><Info className="mr-2"/> Payment Issues ({issueOrders.length})</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 opacity-80">
+                                {issueOrders.map(renderOrderCard)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SECTION 3: COMPLETED ORDERS */}
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-500 mb-4 flex items-center"><Clock className="mr-2"/> Past Orders</h2>
+                        {completedOrders.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 opacity-75 hover:opacity-100 transition-opacity">
+                                {completedOrders.map(renderOrderCard)}
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 text-sm italic">No completed history yet.</p>
+                        )}
+                    </div>
+
+                </div>
+            ) : (
+                <div className="bg-white p-12 rounded-lg shadow-md text-center">
                     <Inbox size={48} className="mx-auto text-gray-300" />
-                    <h3 className="mt-4 text-xl font-semibold text-gray-700">No new orders yet</h3>
-                    <p className="text-gray-500 mt-1">Status: {isSoundEnabled ? '🔊 Alerts Active' : '🔇 Alerts Muted'}</p>
-                  </div>
-                )}
-            </div>
+                    <h3 className="mt-4 text-xl font-semibold text-gray-700">No orders found</h3>
+                    <p className="text-gray-500 mt-1">Waiting for new orders to arrive...</p>
+                </div>
+            )}
         </div>
     );
 };
