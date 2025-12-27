@@ -1251,7 +1251,7 @@ const App = () => {
         // 3. Create a High-Priority Sound Channel
         // This ensures the sound plays even if the phone is in "Do Not Disturb" or background
         await PushNotifications.createChannel({
-            id: 'orders_channel_v2', // MUST match the ID in your Cloud Function
+            id: 'orders_critical_alarm_v1',
             name: 'New Orders Loud',
             description: 'Rings loudly when a new order arrives',
             importance: 5, // Max importance
