@@ -856,28 +856,45 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     );
 };
 
-// --- [UPGRADED] Analytics View Component ---
+// --- [FINAL COMPLETE] Analytics View Component (Dashboard) ---
 const AnalyticsView = ({ restaurantId }) => {
+    // State for Metrics
     const [stats, setStats] = useState({ 
         grossSales: 0, 
         netEarnings: 0, 
-        feesCovered: 0, 
+        mdrFeeAmount: 0, // This holds either the 'Deducted' amount OR the 'Saved' amount
         totalOrders: 0,
-        weeklyPayout: 0, // NEW: Specific for "This Week"
-        pendingPayouts: 0
+        weeklyPayout: 0, // Calculated for Mon-Sun of current week
+        avgOrderValue: 0
     });
+
+    // State for Fee Status (Listening to Admin toggle)
+    const [isFeeWaived, setIsFeeWaived] = useState(false); 
+
+    // State for Charts
     const [salesTrend, setSalesTrend] = useState([]);
     const [peakHours, setPeakHours] = useState([]);
     const [topItems, setTopItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Standard MDR (We show this as "Waived" if applicable)
-    const MDR_PERCENTAGE = 2.301; 
+    const STANDARD_MDR = 2.301; 
 
+    // 1. Listen to Real-time Fee Waiver Status from Database
+    useEffect(() => {
+        if (!restaurantId) return;
+        const unsub = onSnapshot(doc(db, "restaurants", restaurantId), (docSnap) => {
+            if (docSnap.exists()) {
+                // If the field exists and is true, waive fees. Otherwise apply them.
+                setIsFeeWaived(docSnap.data().waiveFee === true);
+            }
+        });
+        return () => unsub();
+    }, [restaurantId]);
+
+    // 2. Fetch Orders & Calculate Everything
     useEffect(() => {
         if (!restaurantId) { setIsLoading(false); return; };
 
-        // 1. Fetch Orders
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", restaurantId),
@@ -891,39 +908,44 @@ const AnalyticsView = ({ restaurantId }) => {
                 createdAtDate: doc.data().createdAt?.toDate() 
             }));
             
+            // --- Calculation Variables ---
             let grossSales = 0;
-            let feesCovered = 0; // This is the "Marketing Value" of the waiver
+            let mdrFeeAmount = 0;
             let weeklyPayout = 0;
             let hourlyCounts = Array(24).fill(0);
             let itemCounts = {};
 
-            // Calculate Date Boundaries for "This Week" (Monday to Sunday)
+            // Calculate "This Week" Start Date (Monday 00:00)
             const now = new Date();
             const startOfWeek = new Date(now);
-            const day = startOfWeek.getDay(); // 0 (Sun) to 6 (Sat)
-            const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-            startOfWeek.setDate(diff);
+            const day = startOfWeek.getDay(); // 0 is Sunday
+            const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust to get Monday
+            startOfWeek.setDate(diff); 
             startOfWeek.setHours(0,0,0,0);
 
+            // Determine the Rate to Apply for Payout Calculation
+            const appliedRate = isFeeWaived ? 0 : STANDARD_MDR;
+
             orders.forEach(order => {
-                const orderTotal = order.subtotal || order.total || 0; // Menu Value
+                const orderTotal = order.subtotal || order.total || 0; // Menu Value (Gross)
                 const paidAmount = order.total || 0;
 
-                // Lifetime Totals
+                // 1. Gross Sales
                 grossSales += orderTotal;
                 
-                // FEE CALCULATION LOGIC:
-                // We assume Fee is ALWAYS waived in the Dashboard view (per your request "Fee waived... as a big thing")
-                // So we show the Fee as "Savings"
-                const wouldBeFee = (paidAmount * MDR_PERCENTAGE) / 100;
-                feesCovered += wouldBeFee;
+                // 2. Fee Logic
+                // We calculate the fee value regardless of waiver to show "What you saved" or "What you paid"
+                const feeValue = (paidAmount * STANDARD_MDR) / 100;
+                mdrFeeAmount += feeValue; 
 
-                // Weekly Payout Logic
+                // 3. Weekly Payout Logic
+                // Check if order is from this week
                 if (order.createdAtDate >= startOfWeek) {
-                    weeklyPayout += orderTotal; // Net = Gross because fee is waived
+                    const deduction = (paidAmount * appliedRate) / 100;
+                    weeklyPayout += (orderTotal - deduction);
                 }
 
-                // Analytics (Peak Hours & Items)
+                // 4. Analytics Data (Charts)
                 if (order.createdAtDate) {
                     hourlyCounts[order.createdAtDate.getHours()] += 1;
                 }
@@ -934,11 +956,18 @@ const AnalyticsView = ({ restaurantId }) => {
                 }
             });
 
-            // Prepare Chart Data (Last 7 Days)
+            // Final Net Earnings Logic
+            // If Waived: Earnings = Gross. 
+            // If Applied: Earnings = Gross - Total Fees.
+            const netEarnings = isFeeWaived ? grossSales : (grossSales - mdrFeeAmount);
+
+            // --- Chart Data Preparation ---
+
+            // A. Daily Sales (Last 7 Days)
             const last7Days = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
-                return d.toLocaleDateString('en-CA');
+                return d.toLocaleDateString('en-CA'); // YYYY-MM-DD
             }).reverse();
 
             const dailyData = last7Days.map(dateStr => {
@@ -951,11 +980,13 @@ const AnalyticsView = ({ restaurantId }) => {
                 };
             });
 
+            // B. Peak Hours
             const peakHoursData = hourlyCounts.map((count, hour) => ({
                 hour: `${hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`,
                 orders: count
             })).filter(h => h.orders > 0);
 
+            // C. Top Items
             const topItemsData = Object.entries(itemCounts)
                 .map(([name, count]) => ({ name, count }))
                 .sort((a, b) => b.count - a.count)
@@ -963,11 +994,11 @@ const AnalyticsView = ({ restaurantId }) => {
 
             setStats({ 
                 grossSales, 
-                netEarnings: grossSales, // Because Fee is Waived
-                feesCovered, 
-                totalOrders: orders.length,
-                weeklyPayout,
-                avgOrderValue: orders.length > 0 ? grossSales / orders.length : 0
+                netEarnings, 
+                mdrFeeAmount, 
+                totalOrders: orders.length, 
+                weeklyPayout, 
+                avgOrderValue: orders.length > 0 ? grossSales / orders.length : 0 
             });
 
             setSalesTrend(dailyData);
@@ -977,7 +1008,7 @@ const AnalyticsView = ({ restaurantId }) => {
         });
 
         return () => unsubscribe();
-    }, [restaurantId]);
+    }, [restaurantId, isFeeWaived]); // Re-run calculations if fee waiver toggles
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin text-green-500" size={32} /></div>;
@@ -988,10 +1019,14 @@ const AnalyticsView = ({ restaurantId }) => {
             <div className="flex flex-col md:flex-row justify-between md:items-end">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800">Business Insights</h1>
-                    <p className="text-gray-600 mt-1">Track your growth, earnings, and savings.</p>
+                    <p className="text-gray-600 mt-1">
+                        Status: <span className={`font-bold ${isFeeWaived ? 'text-green-600' : 'text-orange-600'}`}>
+                            {isFeeWaived ? 'Zero Commission Plan Active' : 'Standard Partner Plan'}
+                        </span>
+                    </p>
                 </div>
-                {/* NEW: Weekly Payout Badge */}
-                <div className="mt-4 md:mt-0 bg-green-100 border border-green-200 px-4 py-2 rounded-lg flex flex-col items-end">
+                {/* Weekly Payout Badge */}
+                <div className="mt-4 md:mt-0 bg-green-100 border border-green-200 px-4 py-2 rounded-lg flex flex-col items-end shadow-sm">
                     <span className="text-xs font-bold text-green-600 uppercase tracking-wider">This Week's Payout</span>
                     <span className="text-2xl font-black text-green-800">₹{stats.weeklyPayout.toFixed(0)}</span>
                 </div>
@@ -1000,28 +1035,44 @@ const AnalyticsView = ({ restaurantId }) => {
             {/* --- 1. KEY METRICS CARDS --- */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 
-                {/* Net Earnings (Hero Card) */}
+                {/* Net Earnings Card */}
                 <div className="bg-gradient-to-br from-green-600 to-emerald-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
-                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Total Lifetime Earnings</p>
+                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Total Net Earnings</p>
                     <h3 className="text-3xl font-black mt-2">₹{stats.netEarnings.toFixed(0)}</h3>
                     <p className="text-xs text-green-200 mt-2 flex items-center gap-1">
-                        <CheckCircle size={12}/> 100% Settlement Rate
+                        <CheckCircle size={12}/> {isFeeWaived ? '100% Revenue Kept' : 'After Deductions'}
                     </p>
                 </div>
 
-                {/* Fees Sponsored (THE BIG THING YOU ASKED FOR) */}
-                <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden ring-4 ring-purple-100">
-                    <div className="absolute -right-6 -bottom-6 bg-white/20 w-32 h-32 rounded-full blur-2xl"></div>
-                    <div className="flex justify-between items-start">
-                        <p className="text-purple-100 font-bold text-sm uppercase tracking-wider">Fees Waived</p>
-                        <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">You Saved</span>
+                {/* DYNAMIC FEE CARD */}
+                {isFeeWaived ? (
+                    // 1. WAIVED STATE (Purple/Happy)
+                    <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden ring-4 ring-purple-100">
+                        <div className="absolute -right-6 -bottom-6 bg-white/20 w-32 h-32 rounded-full blur-2xl"></div>
+                        <div className="flex justify-between items-start">
+                            <p className="text-purple-100 font-bold text-sm uppercase tracking-wider">Fees Waived</p>
+                            <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">You Saved</span>
+                        </div>
+                        <h3 className="text-4xl font-black mt-2">₹{stats.mdrFeeAmount.toFixed(0)}</h3>
+                        <p className="text-xs text-purple-200 mt-2 font-medium flex items-center gap-1">
+                            <Star size={12} fill="currentColor"/> Snaccit Partner Benefit
+                        </p>
                     </div>
-                    <h3 className="text-4xl font-black mt-2">₹{stats.feesCovered.toFixed(0)}</h3>
-                    <p className="text-xs text-purple-200 mt-2 font-medium flex items-center gap-1">
-                        <Star size={12} fill="currentColor"/> Snaccit Partner Benefit
-                    </p>
-                </div>
+                ) : (
+                    // 2. APPLIED STATE (Grey/Neutral)
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Service Fees Paid</p>
+                                <span className="text-xs text-gray-400">Rate: {STANDARD_MDR}%</span>
+                            </div>
+                            <span className="bg-red-50 text-red-600 px-2 py-1 rounded text-xs font-bold">- Deducted</span>
+                        </div>
+                        <h3 className="text-3xl font-bold text-gray-700 mt-2">₹{stats.mdrFeeAmount.toFixed(0)}</h3>
+                        <p className="text-xs text-gray-400 mt-2">Standard platform fee applied.</p>
+                    </div>
+                )}
 
                 {/* Total Orders */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
