@@ -14,12 +14,19 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+    }
         
         // 1. Create the Alarm Channel
         createCriticalAlarmChannel();
 
         // 2. Start the Foreground Service (Keep Alive)
         startKeepAliveService();
+
+}
     }
 
     private void startKeepAliveService() {
@@ -34,7 +41,7 @@ public class MainActivity extends BridgeActivity {
     private void createCriticalAlarmChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             
-            String channelId = "orders_critical_alarm_v1"; 
+            String channelId = "orders_critical_alarm_v3"; 
             CharSequence channelName = "CRITICAL ORDER ALARM";
             String channelDescription = "Plays loud alarm sound for new orders";
 

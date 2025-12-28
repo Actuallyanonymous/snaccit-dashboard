@@ -863,88 +863,99 @@ const AnalyticsView = ({ restaurantId }) => {
         netEarnings: 0, 
         feesCovered: 0, 
         totalOrders: 0,
-        avgOrderValue: 0
+        weeklyPayout: 0, // NEW: Specific for "This Week"
+        pendingPayouts: 0
     });
     const [salesTrend, setSalesTrend] = useState([]);
     const [peakHours, setPeakHours] = useState([]);
     const [topItems, setTopItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const MDR_PERCENTAGE = 2.301; // The fee Snaccit absorbs
+    // Standard MDR (We show this as "Waived" if applicable)
+    const MDR_PERCENTAGE = 2.301; 
 
     useEffect(() => {
         if (!restaurantId) { setIsLoading(false); return; };
 
-        // Fetch completed orders
+        // 1. Fetch Orders
         const q = query(
             collection(db, "orders"), 
-            where("restaurantId", "==", restaurantId), 
+            where("restaurantId", "==", restaurantId),
             where("status", "==", "completed")
         );
         
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const orders = snapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data(),
+                createdAtDate: doc.data().createdAt?.toDate() 
+            }));
             
             let grossSales = 0;
-            let feesCovered = 0;
+            let feesCovered = 0; // This is the "Marketing Value" of the waiver
+            let weeklyPayout = 0;
             let hourlyCounts = Array(24).fill(0);
             let itemCounts = {};
 
+            // Calculate Date Boundaries for "This Week" (Monday to Sunday)
+            const now = new Date();
+            const startOfWeek = new Date(now);
+            const day = startOfWeek.getDay(); // 0 (Sun) to 6 (Sat)
+            const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+            startOfWeek.setDate(diff);
+            startOfWeek.setHours(0,0,0,0);
+
             orders.forEach(order => {
-                const orderTotal = order.subtotal || order.total || 0;
+                const orderTotal = order.subtotal || order.total || 0; // Menu Value
                 const paidAmount = order.total || 0;
 
-                // 1. Financials
+                // Lifetime Totals
                 grossSales += orderTotal;
                 
-                // You pay this, not them. We calculate it to show them what they saved.
-                feesCovered += (paidAmount * MDR_PERCENTAGE) / 100;
+                // FEE CALCULATION LOGIC:
+                // We assume Fee is ALWAYS waived in the Dashboard view (per your request "Fee waived... as a big thing")
+                // So we show the Fee as "Savings"
+                const wouldBeFee = (paidAmount * MDR_PERCENTAGE) / 100;
+                feesCovered += wouldBeFee;
 
-                // 2. Peak Hours Analysis
-                if (order.createdAt && order.createdAt.toDate) {
-                    const hour = order.createdAt.toDate().getHours();
-                    hourlyCounts[hour] += 1;
+                // Weekly Payout Logic
+                if (order.createdAtDate >= startOfWeek) {
+                    weeklyPayout += orderTotal; // Net = Gross because fee is waived
                 }
 
-                // 3. Top Items Analysis
+                // Analytics (Peak Hours & Items)
+                if (order.createdAtDate) {
+                    hourlyCounts[order.createdAtDate.getHours()] += 1;
+                }
                 if (order.items && Array.isArray(order.items)) {
                     order.items.forEach(item => {
-                        if (itemCounts[item.name]) {
-                            itemCounts[item.name] += item.quantity;
-                        } else {
-                            itemCounts[item.name] = item.quantity;
-                        }
+                        itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
                     });
                 }
             });
 
-            // --- Process Data for Charts ---
-
-            // A. Daily Sales Trend (Last 7 Days)
+            // Prepare Chart Data (Last 7 Days)
             const last7Days = Array.from({ length: 7 }, (_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - i);
-                return d.toLocaleDateString('en-CA'); // YYYY-MM-DD
+                return d.toLocaleDateString('en-CA');
             }).reverse();
 
             const dailyData = last7Days.map(dateStr => {
-                const dayOrders = orders.filter(o => 
-                    o.createdAt?.toDate().toLocaleDateString('en-CA') === dateStr
-                );
-                const dayTotal = dayOrders.reduce((sum, o) => sum + (o.subtotal || o.total || 0), 0);
+                const dayTotal = orders
+                    .filter(o => o.createdAtDate?.toLocaleDateString('en-CA') === dateStr)
+                    .reduce((sum, o) => sum + (o.subtotal || o.total || 0), 0);
                 return {
-                    date: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' }), // Mon, Tue
+                    date: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' }),
                     sales: dayTotal
                 };
             });
 
-            // B. Peak Hours Data (Filter out zero-order hours to clean up chart)
             const peakHoursData = hourlyCounts.map((count, hour) => ({
                 hour: `${hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`,
                 orders: count
             })).filter(h => h.orders > 0);
 
-            // C. Top Items Data (Sort and take top 5)
             const topItemsData = Object.entries(itemCounts)
                 .map(([name, count]) => ({ name, count }))
                 .sort((a, b) => b.count - a.count)
@@ -952,9 +963,10 @@ const AnalyticsView = ({ restaurantId }) => {
 
             setStats({ 
                 grossSales, 
-                netEarnings: grossSales, // Net = Gross (Since you cover fees)
+                netEarnings: grossSales, // Because Fee is Waived
                 feesCovered, 
                 totalOrders: orders.length,
+                weeklyPayout,
                 avgOrderValue: orders.length > 0 ? grossSales / orders.length : 0
             });
 
@@ -973,9 +985,16 @@ const AnalyticsView = ({ restaurantId }) => {
 
     return (
         <div className="space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold text-gray-800">Business Insights</h1>
-                <p className="text-gray-600 mt-1">Track your growth, earnings, and customer trends.</p>
+            <div className="flex flex-col md:flex-row justify-between md:items-end">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800">Business Insights</h1>
+                    <p className="text-gray-600 mt-1">Track your growth, earnings, and savings.</p>
+                </div>
+                {/* NEW: Weekly Payout Badge */}
+                <div className="mt-4 md:mt-0 bg-green-100 border border-green-200 px-4 py-2 rounded-lg flex flex-col items-end">
+                    <span className="text-xs font-bold text-green-600 uppercase tracking-wider">This Week's Payout</span>
+                    <span className="text-2xl font-black text-green-800">₹{stats.weeklyPayout.toFixed(0)}</span>
+                </div>
             </div>
             
             {/* --- 1. KEY METRICS CARDS --- */}
@@ -984,20 +1003,23 @@ const AnalyticsView = ({ restaurantId }) => {
                 {/* Net Earnings (Hero Card) */}
                 <div className="bg-gradient-to-br from-green-600 to-emerald-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
-                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Net Payout</p>
+                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Total Lifetime Earnings</p>
                     <h3 className="text-3xl font-black mt-2">₹{stats.netEarnings.toFixed(0)}</h3>
                     <p className="text-xs text-green-200 mt-2 flex items-center gap-1">
-                        <CheckCircle size={12}/> 100% Settlement
+                        <CheckCircle size={12}/> 100% Settlement Rate
                     </p>
                 </div>
 
-                {/* Fees Sponsored (Psychological Win) */}
-                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
-                    <p className="text-indigo-100 font-medium text-sm uppercase tracking-wider">Fees Waived</p>
-                    <h3 className="text-3xl font-black mt-2">₹{stats.feesCovered.toFixed(0)}</h3>
-                    <p className="text-xs text-indigo-200 mt-2 font-medium">
-                        Covered by Snaccit Partner
+                {/* Fees Sponsored (THE BIG THING YOU ASKED FOR) */}
+                <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden ring-4 ring-purple-100">
+                    <div className="absolute -right-6 -bottom-6 bg-white/20 w-32 h-32 rounded-full blur-2xl"></div>
+                    <div className="flex justify-between items-start">
+                        <p className="text-purple-100 font-bold text-sm uppercase tracking-wider">Fees Waived</p>
+                        <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">You Saved</span>
+                    </div>
+                    <h3 className="text-4xl font-black mt-2">₹{stats.feesCovered.toFixed(0)}</h3>
+                    <p className="text-xs text-purple-200 mt-2 font-medium flex items-center gap-1">
+                        <Star size={12} fill="currentColor"/> Snaccit Partner Benefit
                     </p>
                 </div>
 

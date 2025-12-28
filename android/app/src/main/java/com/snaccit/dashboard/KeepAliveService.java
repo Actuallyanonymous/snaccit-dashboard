@@ -70,7 +70,7 @@ public class KeepAliveService extends Service {
     private void acquireWakeLock() {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         if (powerManager != null) {
-            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Snaccit::KeepAliveWakelock");
+            wakeLock = powerManager.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP, "Snaccit::KeepAliveWakelock");
             wakeLock.acquire(); 
         }
     }
