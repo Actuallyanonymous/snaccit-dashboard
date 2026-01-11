@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { LogIn, BarChart as BarChartIcon, UtensilsCrossed, Phone, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
+import { LogIn, BarChart as BarChartIcon, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
@@ -788,48 +789,14 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                 itemToEdit={editingItem}
                 showNotification={showNotification}
             />
-
             <h1 className="text-3xl font-bold text-gray-800">Restaurant Management</h1>
             <p className="text-gray-600 mt-2">Update your restaurant details and manage your menu.</p>
-
-            {/* --- RESTAURANT DETAILS SECTION --- */}
             <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-bold mb-4">Your Details</h2>
-                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Basic Info */}
-                    <div>
-                        <label className="block text-sm font-medium">Name</label>
-                        <input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium">Cuisine</label>
-                        <input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
-                    </div>
-
-                    {/* WATCHDOG NUMBER - Highlighted for importance */}
-                    <div className="md:col-span-2 bg-red-50 p-4 rounded-xl border border-red-100">
-                        <label className="block text-sm font-bold text-red-600 flex items-center gap-1 uppercase tracking-tight">
-                            <Phone size={14}/> Urgent Watchdog Number
-                        </label>
-                        <input 
-                            type="tel" 
-                            name="watchdogPhone" 
-                            placeholder="e.g. 919876543210" 
-                            value={details.watchdogPhone || ''} 
-                            onChange={handleDetailsChange} 
-                            className="mt-2 w-full border-2 border-white rounded-lg p-3 shadow-sm focus:border-red-500 outline-none font-bold text-gray-800"
-                        />
-                        <p className="text-[10px] text-gray-500 mt-2 italic">
-                            * Our server will call this number if an order remains "Pending" for more than 60 seconds.
-                        </p>
-                    </div>
-
-                    {/* Media & Timing */}
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium">Image URL</label>
-                        <input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
-                    </div>
+                    <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
+                    <div><label className="block text-sm font-medium">Cuisine</label><input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
+                    <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
                     <div>
                         <label className="block text-sm font-medium">Opening Time</label>
                         <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
@@ -839,24 +806,13 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                         <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
                     </div>
                 </div>
-
-                <button 
-                    onClick={handleSaveChanges} 
-                    className="mt-6 w-full md:w-auto bg-green-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-100"
-                >
-                    Save Changes
-                </button>
+                <button onClick={handleSaveChanges} className="mt-4 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Changes</button>
             </div>
-
-            {/* --- MENU MANAGEMENT SECTION --- */}
             <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Manage Menu</h2>
-                    <button onClick={handleOpenModalForNew} className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 flex items-center gap-2">
-                        <Plus size={18}/>Add New Item
-                    </button>
+                    <button onClick={handleOpenModalForNew} className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 flex items-center gap-2"><Plus size={18}/>Add New Item</button>
                 </div>
-                
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -865,8 +821,9 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                                 <th className="p-2">Description</th>
                                 <th className="p-2">Price</th>
                                 <th className="p-2">Veg</th>
-                                <th className="p-2 text-center">Available</th> 
-                                <th className="p-2 text-right">Actions</th>
+                                {/* New Column Header */}
+                                <th className="p-2">Available</th> 
+                                <th className="p-2">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -876,8 +833,9 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                                     <td className="p-2 text-sm text-gray-600 max-w-xs truncate">{item.description}</td>
                                     <td className="p-2">₹{item.sizes && item.sizes[0] ? item.sizes[0].price : 'N/A'}</td>
                                     <td className="p-2">{item.isVeg ? 'Yes' : 'No'}</td>
-                                    <td className="p-2 text-center">
-                                        <button onClick={() => handleToggleAvailability(item)} className="focus:outline-none transition-colors hover:opacity-80 inline-block align-middle">
+                                    {/* New Column Body */}
+                                    <td className="p-2">
+                                        <button onClick={() => handleToggleAvailability(item)} className="focus:outline-none transition-colors hover:opacity-80">
                                             {item.isAvailable !== false ? (
                                                 <ToggleRight size={32} className="text-green-600" />
                                             ) : (
@@ -885,11 +843,9 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                                             )}
                                         </button>
                                     </td>
-                                    <td className="p-2 text-right">
-                                        <div className="flex justify-end gap-3">
-                                            <button onClick={() => handleOpenModalForEdit(item)} className="text-blue-500 hover:text-blue-700"><Edit size={18}/></button>
-                                            <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
-                                        </div>
+                                    <td className="p-2 flex gap-2">
+                                        <button onClick={() => handleOpenModalForEdit(item)} className="text-blue-500 hover:text-blue-700"><Edit size={18}/></button>
+                                        <button onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={18}/></button>
                                     </td>
                                 </tr>
                             ))}
