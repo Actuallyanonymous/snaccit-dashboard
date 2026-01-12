@@ -495,7 +495,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
 
 // --- [UPDATED] Menu Item Modal with Image Upload ---
 const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }) => {
-    const defaultItem = { name: '', description: '', isVeg: true, sizes: [{ name: 'Regular', price: '', isAvailable: true }], addons: [], imageUrl: '' };
+    const defaultItem = { name: '', description: '', category: 'Main Course', isVeg: true, sizes: [{ name: 'Regular', price: '', isAvailable: true }], addons: [], imageUrl: '' };
     const [item, setItem] = useState(itemToEdit || defaultItem);
     const [isUploading, setIsUploading] = useState(false); // Loading state for upload
 
@@ -607,6 +607,19 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
                         <label className="block text-sm font-medium">Item Name</label>
                         <input type="text" name="name" value={item.name} onChange={handleItemChange} className="mt-1 w-full border rounded-md p-2"/>
                     </div>
+                    <div>
+            <label className="block text-sm font-medium text-gray-700">Category</label>
+            <input 
+                type="text" 
+                name="category" 
+                value={item.category || ''} 
+                onChange={handleItemChange} 
+                placeholder="e.g. Beverages, Starters, Chinese" 
+                className="mt-1 w-full border rounded-md p-2 focus:ring-2 focus:ring-green-500 outline-none"
+                required
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Common categories: Beverages, Starters, Main Course, Desserts</p>
+        </div>
                     <div>
                         <label className="block text-sm font-medium">Description</label>
                         <textarea name="description" value={item.description} onChange={handleItemChange} rows="3" className="mt-1 w-full border rounded-md p-2"></textarea>
@@ -818,6 +831,7 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                         <thead>
                             <tr className="border-b">
                                 <th className="p-2">Name</th>
+                                <th className="p-2">Category</th>
                                 <th className="p-2">Description</th>
                                 <th className="p-2">Price</th>
                                 <th className="p-2">Veg</th>
@@ -830,6 +844,7 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                             {menuItems.map(item => (
                                 <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.isAvailable === false ? 'opacity-60 bg-gray-50' : ''}`}>
                                     <td className="p-2 font-medium">{item.name}</td>
+                                    <td className="p-2 text-xs font-bold text-blue-600 uppercase">{item.category || 'N/A'}</td>
                                     <td className="p-2 text-sm text-gray-600 max-w-xs truncate">{item.description}</td>
                                     <td className="p-2">₹{item.sizes && item.sizes[0] ? item.sizes[0].price : 'N/A'}</td>
                                     <td className="p-2">{item.isVeg ? 'Yes' : 'No'}</td>
