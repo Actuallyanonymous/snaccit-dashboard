@@ -893,7 +893,10 @@ const AnalyticsView = ({ restaurantId }) => {
     const [topItems, setTopItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const STANDARD_MDR = 2.301; 
+    const STANDARD_MDR = 2.301;
+    
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, net: 0 });
 
     // 1. Listen to Real-time Fee Waiver Status from Database
     useEffect(() => {
@@ -972,6 +975,21 @@ const AnalyticsView = ({ restaurantId }) => {
                 }
             });
 
+            const reportOrders = orders.filter(o => 
+        o.createdAtDate?.toLocaleDateString('en-CA') === selectedDate
+    );
+
+    const reportTotals = reportOrders.reduce((acc, o) => {
+        const gross = o.subtotal || o.total || 0;
+        const feeValue = (o.total * STANDARD_MDR) / 100;
+        acc.gross += gross;
+        acc.fees += feeValue;
+        acc.net += isFeeWaived ? gross : (gross - feeValue);
+        return acc;
+    }, { gross: 0, fees: 0, net: 0 });
+
+    setDailyStats({ orders: reportOrders, ...reportTotals });
+
             // Final Net Earnings Logic
             // If Waived: Earnings = Gross. 
             // If Applied: Earnings = Gross - Total Fees.
@@ -1024,7 +1042,7 @@ const AnalyticsView = ({ restaurantId }) => {
         });
 
         return () => unsubscribe();
-    }, [restaurantId, isFeeWaived]); // Re-run calculations if fee waiver toggles
+    }, [restaurantId, isFeeWaived, selectedDate]); // Re-run calculations if fee waiver toggles
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin text-green-500" size={32} /></div>;
@@ -1154,6 +1172,90 @@ const AnalyticsView = ({ restaurantId }) => {
                     )}
                 </div>
             </div>
+
+            {/* --- Daily Detailed Report --- */}
+<div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <ShoppingBag className="text-blue-600" size={24}/> Daily Detailed Report
+            </h2>
+            <p className="text-sm text-gray-500">Order-wise breakdown of MRP and Waivers</p>
+        </div>
+        <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg border">
+            <label className="text-xs font-bold text-gray-500 uppercase px-2">Select Date:</label>
+            <input 
+                type="date" 
+                value={selectedDate} 
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent font-semibold text-gray-700 outline-none cursor-pointer"
+            />
+        </div>
+    </div>
+
+    {/* Summary Mini-Cards */}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <p className="text-xs text-gray-500 font-bold uppercase">Day's Total MRP</p>
+            <p className="text-xl font-black text-gray-800">₹{dailyStats.gross.toFixed(2)}</p>
+        </div>
+        <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+            <p className="text-xs text-purple-600 font-bold uppercase">{isFeeWaived ? 'Snaccit Waiver' : 'Platform Fees'}</p>
+            <p className="text-xl font-black text-purple-700">₹{dailyStats.fees.toFixed(2)}</p>
+        </div>
+        <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+            <p className="text-xs text-green-600 font-bold uppercase">Estimated Payout</p>
+            <p className="text-xl font-black text-green-700">₹{dailyStats.net.toFixed(2)}</p>
+        </div>
+    </div>
+
+    {/* Orders Table */}
+    <div className="overflow-x-auto">
+        <table className="w-full text-left">
+            <thead>
+                <tr className="text-gray-400 text-xs uppercase border-b border-gray-100">
+                    <th className="pb-3 pl-2 font-semibold">Customer / Order ID</th>
+                    <th className="pb-3 font-semibold text-right">MRP (Gross)</th>
+                    <th className="pb-3 font-semibold text-right">{isFeeWaived ? 'Waiver' : 'MDR Fee'}</th>
+                    <th className="pb-3 pr-2 font-semibold text-right">Net Payout</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+                {dailyStats.orders.length > 0 ? (
+                    dailyStats.orders.map((order) => {
+                        const oGross = order.subtotal || order.total || 0;
+                        const oFee = (order.total * STANDARD_MDR) / 100;
+                        const oNet = isFeeWaived ? oGross : (oGross - oFee);
+
+                        return (
+                            <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="py-4 pl-2">
+                                    <p className="font-bold text-gray-800 text-sm">{order.userName || 'Guest'}</p>
+                                    <p className="text-[10px] text-gray-400 font-mono uppercase">{order.id.slice(-8)}</p>
+                                </td>
+                                <td className="py-4 text-right font-medium text-gray-700">₹{oGross.toFixed(2)}</td>
+                                <td className="py-4 text-right">
+                                    <span className={`text-xs font-bold ${isFeeWaived ? 'text-purple-600' : 'text-red-400'}`}>
+                                        {isFeeWaived ? '+' : '-'} ₹{oFee.toFixed(2)}
+                                    </span>
+                                </td>
+                                <td className="py-4 pr-2 text-right">
+                                    <p className="font-black text-green-600">₹{oNet.toFixed(2)}</p>
+                                </td>
+                            </tr>
+                        );
+                    })
+                ) : (
+                    <tr>
+                        <td colSpan="4" className="py-10 text-center text-gray-400 italic">
+                            No completed orders for this date.
+                        </td>
+                    </tr>
+                )}
+            </tbody>
+        </table>
+    </div>
+</div>
 
             {/* --- 3. TOP ITEMS SECTION --- */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
