@@ -874,329 +874,201 @@ const SettingsView = ({ restaurantId, showNotification }) => {
 
 // --- [FINAL COMPLETE] Analytics View Component (Dashboard) ---
 const AnalyticsView = ({ restaurantId }) => {
-    // State for Metrics
     const [stats, setStats] = useState({ 
         grossSales: 0, 
         netEarnings: 0, 
-        mdrFeeAmount: 0, // This holds either the 'Deducted' amount OR the 'Saved' amount
+        totalMdr: 0, 
         totalOrders: 0,
-        weeklyPayout: 0, // Calculated for Mon-Sun of current week
-        avgOrderValue: 0
+        weeklyPayout: 0 
     });
-
-    // State for Fee Status (Listening to Admin toggle)
     const [isFeeWaived, setIsFeeWaived] = useState(false); 
-
-    // State for Charts
-    const [salesTrend, setSalesTrend] = useState([]);
-    const [peakHours, setPeakHours] = useState([]);
-    const [topItems, setTopItems] = useState([]);
+    const [dailySettlements, setDailySettlements] = useState([]);
+    const [selectedDayOrders, setSelectedDayOrders] = useState(null); // For "View Day Details"
     const [isLoading, setIsLoading] = useState(true);
 
     const STANDARD_MDR = 2.301; 
 
-    // 1. Listen to Real-time Fee Waiver Status from Database
     useEffect(() => {
         if (!restaurantId) return;
-        const unsub = onSnapshot(doc(db, "restaurants", restaurantId), (docSnap) => {
+        
+        // 1. Listen to Plan Status
+        const unsubResto = onSnapshot(doc(db, "restaurants", restaurantId), (docSnap) => {
             if (docSnap.exists()) {
-                // If the field exists and is true, waive fees. Otherwise apply them.
                 setIsFeeWaived(docSnap.data().waiveFee === true);
             }
         });
-        return () => unsub();
-    }, [restaurantId]);
 
-    // 2. Fetch Orders & Calculate Everything
-    useEffect(() => {
-        if (!restaurantId) { setIsLoading(false); return; };
-
+        // 2. Fetch Completed Orders
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", restaurantId),
-            where("status", "==", "completed")
+            where("status", "==", "completed"),
+            orderBy("createdAt", "desc")
         );
         
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubOrders = onSnapshot(q, (snapshot) => {
             const orders = snapshot.docs.map(doc => ({ 
                 id: doc.id, 
                 ...doc.data(),
-                createdAtDate: doc.data().createdAt?.toDate() 
+                dateObj: doc.data().createdAt?.toDate() 
             }));
-            
-            // --- Calculation Variables ---
-            let grossSales = 0;
-            let mdrFeeAmount = 0;
-            let weeklyPayout = 0;
-            let hourlyCounts = Array(24).fill(0);
-            let itemCounts = {};
 
-            // Calculate "This Week" Start Date (Monday 00:00)
-            const now = new Date();
-            const startOfWeek = new Date(now);
-            const day = startOfWeek.getDay(); // 0 is Sunday
-            const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust to get Monday
-            startOfWeek.setDate(diff); 
-            startOfWeek.setHours(0,0,0,0);
-
-            // Determine the Rate to Apply for Payout Calculation
-            const appliedRate = isFeeWaived ? 0 : STANDARD_MDR;
+            let gross = 0;
+            let mdrSum = 0;
+            const settlementsMap = {};
 
             orders.forEach(order => {
-                const orderTotal = order.subtotal || order.total || 0; // Menu Value (Gross)
-                const paidAmount = order.total || 0;
+                const orderGross = order.subtotal || order.total || 0;
+                const custPaid = order.total || 0;
+                const mdr = (custPaid * STANDARD_MDR) / 100;
 
-                // 1. Gross Sales
-                grossSales += orderTotal;
-                
-                // 2. Fee Logic
-                // We calculate the fee value regardless of waiver to show "What you saved" or "What you paid"
-                const feeValue = (paidAmount * STANDARD_MDR) / 100;
-                mdrFeeAmount += feeValue; 
+                gross += orderGross;
+                mdrSum += mdr;
 
-                // 3. Weekly Payout Logic
-                // Check if order is from this week
-                if (order.createdAtDate >= startOfWeek) {
-                    const deduction = (paidAmount * appliedRate) / 100;
-                    weeklyPayout += (orderTotal - deduction);
+                // Group by Date for the Settlement Log
+                const dateKey = order.dateObj?.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                if (!settlementsMap[dateKey]) {
+                    settlementsMap[dateKey] = { date: dateKey, gross: 0, mdr: 0, count: 0, orders: [] };
                 }
-
-                // 4. Analytics Data (Charts)
-                if (order.createdAtDate) {
-                    hourlyCounts[order.createdAtDate.getHours()] += 1;
-                }
-                if (order.items && Array.isArray(order.items)) {
-                    order.items.forEach(item => {
-                        itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
-                    });
-                }
+                settlementsMap[dateKey].gross += orderGross;
+                settlementsMap[dateKey].mdr += mdr;
+                settlementsMap[dateKey].count += 1;
+                settlementsMap[dateKey].orders.push(order);
             });
 
-            // Final Net Earnings Logic
-            // If Waived: Earnings = Gross. 
-            // If Applied: Earnings = Gross - Total Fees.
-            const netEarnings = isFeeWaived ? grossSales : (grossSales - mdrFeeAmount);
-
-            // --- Chart Data Preparation ---
-
-            // A. Daily Sales (Last 7 Days)
-            const last7Days = Array.from({ length: 7 }, (_, i) => {
-                const d = new Date();
-                d.setDate(d.getDate() - i);
-                return d.toLocaleDateString('en-CA'); // YYYY-MM-DD
-            }).reverse();
-
-            const dailyData = last7Days.map(dateStr => {
-                const dayTotal = orders
-                    .filter(o => o.createdAtDate?.toLocaleDateString('en-CA') === dateStr)
-                    .reduce((sum, o) => sum + (o.subtotal || o.total || 0), 0);
-                return {
-                    date: new Date(dateStr).toLocaleDateString('en-IN', { weekday: 'short' }),
-                    sales: dayTotal
-                };
+            setStats({
+                grossSales: gross,
+                totalMdr: mdrSum,
+                netEarnings: isFeeWaived ? gross : (gross - mdrSum),
+                totalOrders: orders.length
             });
 
-            // B. Peak Hours
-            const peakHoursData = hourlyCounts.map((count, hour) => ({
-                hour: `${hour > 12 ? hour - 12 : hour} ${hour >= 12 ? 'PM' : 'AM'}`,
-                orders: count
-            })).filter(h => h.orders > 0);
-
-            // C. Top Items
-            const topItemsData = Object.entries(itemCounts)
-                .map(([name, count]) => ({ name, count }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5);
-
-            setStats({ 
-                grossSales, 
-                netEarnings, 
-                mdrFeeAmount, 
-                totalOrders: orders.length, 
-                weeklyPayout, 
-                avgOrderValue: orders.length > 0 ? grossSales / orders.length : 0 
-            });
-
-            setSalesTrend(dailyData);
-            setPeakHours(peakHoursData);
-            setTopItems(topItemsData);
+            setDailySettlements(Object.values(settlementsMap));
             setIsLoading(false);
         });
 
-        return () => unsubscribe();
-    }, [restaurantId, isFeeWaived]); // Re-run calculations if fee waiver toggles
+        return () => { unsubResto(); unsubOrders(); };
+    }, [restaurantId, isFeeWaived]);
 
-    if (isLoading) {
-        return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin text-green-500" size={32} /></div>;
-    }
+    if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-green-600" size={32} /></div>;
 
     return (
-        <div className="space-y-8">
-            <div className="flex flex-col md:flex-row justify-between md:items-end">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Business Insights</h1>
-                    <p className="text-gray-600 mt-1">
-                        Status: <span className={`font-bold ${isFeeWaived ? 'text-green-600' : 'text-orange-600'}`}>
-                            {isFeeWaived ? 'Zero Commission Plan Active' : 'Standard Partner Plan'}
-                        </span>
-                    </p>
-                </div>
-                {/* Weekly Payout Badge */}
-                <div className="mt-4 md:mt-0 bg-green-100 border border-green-200 px-4 py-2 rounded-lg flex flex-col items-end shadow-sm">
-                    <span className="text-xs font-bold text-green-600 uppercase tracking-wider">This Week's Payout</span>
-                    <span className="text-2xl font-black text-green-800">₹{stats.weeklyPayout.toFixed(0)}</span>
-                </div>
-            </div>
-            
-            {/* --- 1. KEY METRICS CARDS --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                
-                {/* Net Earnings Card */}
-                <div className="bg-gradient-to-br from-green-600 to-emerald-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 bg-white/10 w-24 h-24 rounded-full blur-xl"></div>
-                    <p className="text-green-100 font-medium text-sm uppercase tracking-wider">Total Net Earnings</p>
-                    <h3 className="text-3xl font-black mt-2">₹{stats.netEarnings.toFixed(0)}</h3>
-                    <p className="text-xs text-green-200 mt-2 flex items-center gap-1">
-                        <CheckCircle size={12}/> {isFeeWaived ? '100% Revenue Kept' : 'After Deductions'}
-                    </p>
-                </div>
-
-                {/* DYNAMIC FEE CARD */}
-                {isFeeWaived ? (
-                    // 1. WAIVED STATE (Purple/Happy)
-                    <div className="bg-gradient-to-br from-purple-600 to-indigo-700 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden ring-4 ring-purple-100">
-                        <div className="absolute -right-6 -bottom-6 bg-white/20 w-32 h-32 rounded-full blur-2xl"></div>
-                        <div className="flex justify-between items-start">
-                            <p className="text-purple-100 font-bold text-sm uppercase tracking-wider">Fees Waived</p>
-                            <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">You Saved</span>
-                        </div>
-                        <h3 className="text-4xl font-black mt-2">₹{stats.mdrFeeAmount.toFixed(0)}</h3>
-                        <p className="text-xs text-purple-200 mt-2 font-medium flex items-center gap-1">
-                            <Star size={12} fill="currentColor"/> Snaccit Partner Benefit
+        <div className="space-y-8 pb-20">
+            {/* Plan Status Header */}
+            <div className={`p-4 rounded-xl border-2 flex flex-col md:flex-row justify-between items-center gap-4 ${isFeeWaived ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                <div className="flex items-center gap-3">
+                    <div className={`p-3 rounded-full ${isFeeWaived ? 'bg-purple-600 text-white' : 'bg-blue-600 text-white'}`}>
+                        {isFeeWaived ? <Star size={24} /> : <CreditCard size={24} />}
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-800">{isFeeWaived ? 'Zero Commission Plan' : 'Standard Partner Plan'}</h2>
+                        <p className="text-sm text-gray-600">
+                            {isFeeWaived ? 'Snaccit is currently sponsoring your 2.301% MDR charges.' : 'Standard 2.301% MDR applies to all transactions.'}
                         </p>
                     </div>
-                ) : (
-                    // 2. APPLIED STATE (Grey/Neutral)
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Service Fees Paid</p>
-                                <span className="text-xs text-gray-400">Rate: {STANDARD_MDR}%</span>
-                            </div>
-                            <span className="bg-red-50 text-red-600 px-2 py-1 rounded text-xs font-bold">- Deducted</span>
-                        </div>
-                        <h3 className="text-3xl font-bold text-gray-700 mt-2">₹{stats.mdrFeeAmount.toFixed(0)}</h3>
-                        <p className="text-xs text-gray-400 mt-2">Standard platform fee applied.</p>
-                    </div>
-                )}
-
-                {/* Total Orders */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Total Orders</p>
-                            <h3 className="text-3xl font-bold text-gray-800 mt-2">{stats.totalOrders}</h3>
-                        </div>
-                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Activity size={24}/></div>
-                    </div>
                 </div>
-
-                {/* Average Order Value */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-gray-500 font-bold text-xs uppercase tracking-wider">Avg. Order Value</p>
-                            <h3 className="text-3xl font-bold text-gray-800 mt-2">₹{stats.avgOrderValue.toFixed(0)}</h3>
-                        </div>
-                        <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><TrendingUp size={24}/></div>
-                    </div>
+                <div className="text-right">
+                    <p className="text-xs font-bold text-gray-400 uppercase">Total MDR {isFeeWaived ? 'Saved' : 'Paid'}</p>
+                    <p className={`text-2xl font-black ${isFeeWaived ? 'text-purple-600' : 'text-gray-700'}`}>₹{stats.totalMdr.toFixed(2)}</p>
                 </div>
             </div>
 
-            {/* --- 2. CHARTS ROW --- */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* Sales Trend Chart */}
+            {/* Metric Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h2 className="text-lg font-bold text-gray-800 mb-6">Revenue Trend (7 Days)</h2>
-                    <div className="h-64 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={salesTrend}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
-                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }} />
-                                <Line type="monotone" dataKey="sales" stroke="#10B981" strokeWidth={4} dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
+                    <p className="text-gray-500 text-sm font-bold uppercase tracking-wider">Gross Revenue (MRP)</p>
+                    <h3 className="text-3xl font-black text-gray-800 mt-2">₹{stats.grossSales.toFixed(2)}</h3>
+                    <p className="text-xs text-gray-400 mt-1">Total value of all dishes sold</p>
                 </div>
-
-                {/* Peak Hours Chart */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h2 className="text-lg font-bold text-gray-800 mb-6">Peak Order Hours</h2>
-                    {peakHours.length > 0 ? (
-                        <div className="h-64 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={peakHours}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                                    <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 11}} dy={10} />
-                                    <Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
-                                    <Bar dataKey="orders" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={30} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <div className="h-64 flex flex-col items-center justify-center text-gray-400">
-                            <Activity size={48} className="mb-2 opacity-20"/>
-                            <p>Not enough data yet</p>
-                        </div>
-                    )}
+                    <p className="text-gray-500 text-sm font-bold uppercase tracking-wider">Your Payout (Net)</p>
+                    <h3 className="text-3xl font-black text-green-600 mt-2">₹{stats.netEarnings.toFixed(2)}</h3>
+                    <p className="text-xs text-gray-400 mt-1">Amount credited to your bank</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <p className="text-gray-500 text-sm font-bold uppercase tracking-wider">Total Orders</p>
+                    <h3 className="text-3xl font-black text-blue-600 mt-2">{stats.totalOrders}</h3>
+                    <p className="text-xs text-gray-400 mt-1">Successful completions</p>
                 </div>
             </div>
 
-            {/* --- 3. TOP ITEMS SECTION --- */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h2 className="text-lg font-bold text-gray-800 mb-4">🔥 Top Selling Items</h2>
+            {/* Settlement Log */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-6 border-b border-gray-50 bg-gray-50/50">
+                    <h2 className="text-xl font-bold text-gray-800">Daily Revenue Log</h2>
+                    <p className="text-sm text-gray-500">Breakdown of earnings per day</p>
+                </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="border-b border-gray-100 text-gray-400 text-sm">
-                                <th className="pb-3 font-semibold">Item Name</th>
-                                <th className="pb-3 font-semibold text-right">Quantity Sold</th>
-                                <th className="pb-3 font-semibold text-right">Popularity</th>
+                            <tr className="bg-gray-100/50 text-gray-500 text-xs uppercase font-bold">
+                                <th className="p-4">Date</th>
+                                <th className="p-4 text-center">Orders</th>
+                                <th className="p-4 text-right">Gross (MRP)</th>
+                                <th className="p-4 text-right">MDR (2.301%)</th>
+                                <th className="p-4 text-right">Final Payout</th>
+                                <th className="p-4 text-center">Action</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {topItems.length > 0 ? (
-                                topItems.map((item, index) => (
-                                    <tr key={index} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                                        <td className="py-4 font-medium text-gray-800 flex items-center gap-3">
-                                            <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
-                                                {index + 1}
-                                            </span>
-                                            {item.name}
-                                        </td>
-                                        <td className="py-4 text-right text-gray-600 font-bold">{item.count}</td>
-                                        <td className="py-4 text-right">
-                                            <div className="w-24 h-2 bg-gray-100 rounded-full ml-auto overflow-hidden">
-                                                <div 
-                                                    className="h-full bg-green-500 rounded-full" 
-                                                    style={{ width: `${(item.count / topItems[0].count) * 100}%` }}
-                                                ></div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="3" className="py-8 text-center text-gray-400">No items sold yet.</td>
+                        <tbody className="divide-y divide-gray-50">
+                            {dailySettlements.map((s, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                    <td className="p-4 font-bold text-gray-700">{s.date}</td>
+                                    <td className="p-4 text-center text-gray-600">{s.count}</td>
+                                    <td className="p-4 text-right font-medium">₹{s.gross.toFixed(2)}</td>
+                                    <td className={`p-4 text-right ${isFeeWaived ? 'text-purple-500' : 'text-red-400'}`}>
+                                        {isFeeWaived ? '₹0.00' : `-₹${s.mdr.toFixed(2)}`}
+                                        {isFeeWaived && <span className="block text-[10px] font-bold">SAVED ₹{s.mdr.toFixed(0)}</span>}
+                                    </td>
+                                    <td className="p-4 text-right font-black text-green-600">
+                                        ₹{(isFeeWaived ? s.gross : (s.gross - s.mdr)).toFixed(2)}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <button 
+                                            onClick={() => setSelectedDayOrders(s)}
+                                            className="text-blue-500 hover:bg-blue-50 p-2 rounded-full transition-colors"
+                                        >
+                                            <Eye size={18} />
+                                        </button>
+                                    </td>
                                 </tr>
-                            )}
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            {/* Daily Details Modal */}
+            {selectedDayOrders && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+                        <div className="p-6 border-b flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-bold">Orders for {selectedDayOrders.date}</h3>
+                                <p className="text-sm text-gray-500">{selectedDayOrders.count} total orders</p>
+                            </div>
+                            <button onClick={() => setSelectedDayOrders(null)} className="p-2 hover:bg-gray-100 rounded-full"><X /></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-4">
+                            {selectedDayOrders.orders.map(o => (
+                                <div key={o.id} className="flex justify-between items-center p-4 border rounded-xl bg-gray-50">
+                                    <div>
+                                        <p className="font-bold text-gray-800">Order #{o.id.slice(-6).toUpperCase()}</p>
+                                        <p className="text-xs text-gray-500">{o.dateObj?.toLocaleTimeString()}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-bold text-gray-800">₹{o.subtotal || o.total}</p>
+                                        <p className="text-[10px] uppercase font-bold text-green-600">Paid by {o.paymentMethod || 'Online'}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-6 border-t bg-gray-50 rounded-b-2xl">
+                            <button onClick={() => setSelectedDayOrders(null)} className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl">Close Breakdown</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
