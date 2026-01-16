@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { LogIn, BarChart as BarChartIcon, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
 import { initializeApp } from "firebase/app";
@@ -240,47 +241,6 @@ const SkeletonOrderCard = () => (
         </div>
     </div>
 );
-
-// --- New View for Snaccit-Dashboard: CashApprovalsView ---
-const CashApprovalsView = ({ restaurantId }) => {
-    const [requests, setRequests] = useState([]);
-
-    useEffect(() => {
-        const q = query(
-            collection(db, "wallet_requests"),
-            where("restaurantId", "==", restaurantId),
-            where("status", "==", "pending")
-        );
-        return onSnapshot(q, s => setRequests(s.docs.map(d => ({id: d.id, ...d.data()}))));
-    }, [restaurantId]);
-
-    const confirmCashReceived = async (reqId) => {
-        await updateDoc(doc(db, "wallet_requests", reqId), {
-            status: 'confirmed',
-            confirmedAt: serverTimestamp()
-        });
-    };
-
-    return (
-        <div className="space-y-4">
-            <h2 className="text-2xl font-bold">Verify Cash Payments</h2>
-            {requests.map(req => (
-                <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
-                    <div>
-                        <p className="font-bold">{req.userName}</p>
-                        <p className="text-green-600 font-black text-xl">₹{req.amount}</p>
-                    </div>
-                    <button 
-                        onClick={() => confirmCashReceived(req.id)}
-                        className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold"
-                    >
-                        Confirm Receipt
-                    </button>
-                </div>
-            ))}
-        </div>
-    );
-};
 
 // --- Orders View Component (Reordered: Active -> Completed -> Failed) ---
 const OrdersView = ({ restaurantId, showNotification }) => {
