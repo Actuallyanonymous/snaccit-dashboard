@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { LogIn, BarChart as BarChartIcon, UtensilsCrossed, Settings, LogOut, Loader2, Clock, CheckCircle, XCircle, Edit, Trash2, Info, Inbox, X, Plus, PlusCircle, Star, MessageSquare, ChefHat, Bell, Menu, ToggleLeft, ToggleRight, DollarSign, TrendingUp, CreditCard, Activity, ShoppingBag} from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, updateDoc, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { KeepAwake } from '@capgo/capacitor-keep-awake';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -75,17 +75,19 @@ const CashVerificationView = ({ restaurantId, showNotification }) => {
     }, [restaurantId]);
 
     const handleConfirm = async (reqId, amount) => {
-        try {
-            await updateDoc(doc(db, "cash_requests", reqId), {
-                amountConfirmed: Number(amount),
-                status: 'pending_admin',
-                updatedAt: serverTimestamp()
-            });
-            showNotification("Confirmed! Admin will now add points.", "success");
-        } catch (error) {
-            showNotification("Error confirming cash.", "error");
-        }
-    };
+    try {
+        const requestRef = doc(db, "cash_requests", reqId);
+        await updateDoc(requestRef, {
+            amountConfirmed: Number(amount),
+            status: 'pending_admin',
+            updatedAt: serverTimestamp() // Now it will work
+        });
+        showNotification("Confirmed! Admin will now add points.", "success");
+    } catch (error) {
+        console.error("Confirmation Error:", error);
+        showNotification("Error confirming cash.", "error");
+    }
+};
 
     return (
         <div className="space-y-6">
