@@ -57,6 +57,64 @@ const Notification = ({ message, type, onDismiss }) => {
     );
 };
 
+const CashVerificationView = ({ restaurantId, showNotification }) => {
+    const [requests, setRequests] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const q = query(
+            collection(db, "cash_requests"), 
+            where("restaurantId", "==", restaurantId),
+            where("status", "==", "pending_restaurant"),
+            orderBy("createdAt", "desc")
+        );
+        return onSnapshot(q, (snapshot) => {
+            setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoading(false);
+        });
+    }, [restaurantId]);
+
+    const handleConfirm = async (reqId, amount) => {
+        try {
+            await updateDoc(doc(db, "cash_requests", reqId), {
+                amountConfirmed: Number(amount),
+                status: 'pending_admin',
+                updatedAt: serverTimestamp()
+            });
+            showNotification("Confirmed! Admin will now add points.", "success");
+        } catch (error) {
+            showNotification("Error confirming cash.", "error");
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <h1 className="text-3xl font-bold text-gray-800">Cash Verifications</h1>
+            <div className="grid gap-4">
+                {requests.length > 0 ? requests.map(req => (
+                    <div key={req.id} className="bg-white p-6 rounded-xl shadow-sm border flex justify-between items-center">
+                        <div>
+                            <p className="font-bold text-lg">{req.userName}</p>
+                            <p className="text-sm text-gray-500">{req.userMobile}</p>
+                            <p className="text-green-600 font-bold mt-1">Claims hand-over: ₹{req.amountRequested}</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => {
+                                    const verifiedAmount = prompt("Enter the ACTUAL amount you received:", req.amountRequested);
+                                    if (verifiedAmount) handleConfirm(req.id, verifiedAmount);
+                                }}
+                                className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700"
+                            >
+                                Confirm Received
+                            </button>
+                        </div>
+                    </div>
+                )) : <p className="text-gray-400">No pending cash requests.</p>}
+            </div>
+        </div>
+    );
+};
 
 // --- Login Page Component ---
 const LoginPage = ({ onShowSignUp }) => {
@@ -1411,6 +1469,7 @@ const App = () => {
   const renderView = () => {
     switch(view) {
         case 'orders': return <OrdersView restaurantId={restaurantId} showNotification={showNotification} />;
+        case 'cash': return <CashVerificationView restaurantId={restaurantId} showNotification={showNotification} />;
         case 'settings': return <SettingsView restaurantId={restaurantId} showNotification={showNotification} />;
         case 'analytics': return <AnalyticsView restaurantId={restaurantId} />;
         case 'reviews': return <ReviewsView restaurantId={restaurantId} />;
@@ -1497,6 +1556,7 @@ const App = () => {
                     </div>
                     <ul className="py-4">
                         <li onClick={() => handleSetView('orders')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'orders' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><UtensilsCrossed className="mr-3" size={20}/> Incoming Orders</li>
+                        <li onClick={() => handleSetView('cash')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'cash' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><DollarSign className="mr-3" size={20}/> Cash Verification</li>
                         <li onClick={() => handleSetView('reviews')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'reviews' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><MessageSquare className="mr-3" size={20}/> Reviews</li>
                         <li onClick={() => handleSetView('analytics')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'analytics' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><BarChartIcon className="mr-3" size={20}/> Analytics</li>
                         <li onClick={() => handleSetView('settings')} className={`px-6 py-3 flex items-center cursor-pointer ${view === 'settings' ? 'bg-green-50 text-green-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}><Settings className="mr-3" size={20}/> Settings</li>
