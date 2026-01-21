@@ -778,6 +778,7 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         if (!restaurantId) return;
@@ -796,6 +797,36 @@ const SettingsView = ({ restaurantId, showNotification }) => {
     }, [restaurantId]);
 
     const handleDetailsChange = (e) => setDetails({ ...details, [e.target.name]: e.target.value });
+
+    const handleProfileImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            showNotification("Please upload a valid image file.", "error");
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            showNotification("Image too large. Max 2MB.", "error");
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const storage = getStorage();
+            const storageRef = ref(storage, `restaurants/${restaurantId}/profile_${Date.now()}`);
+            await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(storageRef);
+
+            setDetails(prev => ({ ...prev, imageUrl: downloadURL }));
+            showNotification("Profile image uploaded! Click Save to confirm.", "success");
+        } catch (error) {
+            console.error("Upload failed:", error);
+            showNotification("Failed to upload image.", "error");
+        } finally {
+            setIsUploading(false);
+        }
+    };
     
     const handleSaveChanges = async () => {
         await updateDoc(doc(db, "restaurants", restaurantId), details);
@@ -856,6 +887,7 @@ const SettingsView = ({ restaurantId, showNotification }) => {
 
     return (
         <div>
+            {/* Modal for adding/editing menu items */}
             <MenuItemModal 
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
@@ -863,14 +895,66 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                 itemToEdit={editingItem}
                 showNotification={showNotification}
             />
+
             <h1 className="text-3xl font-bold text-gray-800">Restaurant Management</h1>
             <p className="text-gray-600 mt-2">Update your restaurant details and manage your menu.</p>
+
+            {/* --- SECTION 1: RESTAURANT PROFILE DETAILS --- */}
             <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-bold mb-4">Your Details</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium">Name</label><input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
-                    <div><label className="block text-sm font-medium">Cuisine</label><input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
-                    <div className="md:col-span-2"><label className="block text-sm font-medium">Image URL</label><input type="text" name="imageUrl" value={details.imageUrl} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium">Name</label>
+                        <input type="text" name="name" value={details.name} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium">Cuisine</label>
+                        <input type="text" name="cuisine" value={details.cuisine} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
+                    </div>
+
+                    {/* NEW: Restaurant Profile Image Upload Block */}
+                    <div className="md:col-span-2 border p-4 rounded-md bg-gray-50">
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Restaurant Profile Image</label>
+                        <div className="flex flex-col sm:flex-row items-center gap-6">
+                            {/* Image Preview Box */}
+                            <div className="w-32 h-32 bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center border border-gray-300 shadow-sm shrink-0">
+                                {isUploading ? (
+                                    <Loader2 className="animate-spin text-green-600" />
+                                ) : details.imageUrl ? (
+                                    <img src={details.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="text-xs text-gray-500">No Image</span>
+                                )}
+                            </div>
+
+                            {/* Upload Controls */}
+                            <div className="flex-1 w-full">
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={handleProfileImageUpload} 
+                                    className="block w-full text-sm text-slate-500
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-full file:border-0
+                                      file:text-sm file:font-semibold
+                                      file:bg-green-100 file:text-green-700
+                                      hover:file:bg-green-200
+                                      cursor-pointer"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-2 uppercase font-bold">Max size: 2MB (JPG, PNG)</p>
+                                
+                                <input 
+                                    type="text" 
+                                    name="imageUrl" 
+                                    value={details.imageUrl} 
+                                    onChange={handleDetailsChange} 
+                                    placeholder="Or paste image URL here..." 
+                                    className="mt-3 w-full border rounded-md p-2 text-xs bg-white"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium">Opening Time</label>
                         <input type="time" name="openingTime" value={details.openingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
@@ -880,12 +964,23 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                         <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
                     </div>
                 </div>
-                <button onClick={handleSaveChanges} className="mt-4 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700">Save Changes</button>
+                
+                <button 
+                    onClick={handleSaveChanges} 
+                    disabled={isUploading}
+                    className={`mt-6 font-semibold py-2 px-6 rounded-lg transition-colors ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
+                >
+                    {isUploading ? 'Uploading...' : 'Save Changes'}
+                </button>
             </div>
+
+            {/* --- SECTION 2: MENU MANAGEMENT --- */}
             <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Manage Menu</h2>
-                    <button onClick={handleOpenModalForNew} className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 flex items-center gap-2"><Plus size={18}/>Add New Item</button>
+                    <button onClick={handleOpenModalForNew} className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 flex items-center gap-2">
+                        <Plus size={18}/>Add New Item
+                    </button>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -896,7 +991,6 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                                 <th className="p-2">Description</th>
                                 <th className="p-2">Price</th>
                                 <th className="p-2">Veg</th>
-                                {/* New Column Header */}
                                 <th className="p-2">Available</th> 
                                 <th className="p-2">Actions</th>
                             </tr>
@@ -909,7 +1003,6 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                                     <td className="p-2 text-sm text-gray-600 max-w-xs truncate">{item.description}</td>
                                     <td className="p-2">₹{item.sizes && item.sizes[0] ? item.sizes[0].price : 'N/A'}</td>
                                     <td className="p-2">{item.isVeg ? 'Yes' : 'No'}</td>
-                                    {/* New Column Body */}
                                     <td className="p-2">
                                         <button onClick={() => handleToggleAvailability(item)} className="focus:outline-none transition-colors hover:opacity-80">
                                             {item.isAvailable !== false ? (
