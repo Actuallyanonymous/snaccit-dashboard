@@ -1361,14 +1361,10 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
     </div>
 
     {/* Summary Mini-Cards */}
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
             <p className="text-xs text-gray-500 font-bold uppercase">Day's Total MRP</p>
             <p className="text-xl font-black text-gray-800">₹{dailyStats.gross.toFixed(2)}</p>
-        </div>
-        <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-            <p className="text-xs text-purple-600 font-bold uppercase">{isFeeWaived ? 'Snaccit Waiver' : 'Platform Fees'}</p>
-            <p className="text-xl font-black text-purple-700">₹{dailyStats.fees.toFixed(2)}</p>
         </div>
         <div className="p-4 bg-green-50 rounded-xl border border-green-100">
             <p className="text-xs text-green-600 font-bold uppercase">Estimated Payout</p>
@@ -1383,7 +1379,6 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                 <tr className="text-gray-400 text-xs uppercase border-b border-gray-100">
                     <th className="pb-3 pl-2 font-semibold">Customer / Order ID</th>
                     <th className="pb-3 font-semibold text-right">MRP (Gross)</th>
-                    <th className="pb-3 font-semibold text-right">{isFeeWaived ? 'Waiver' : 'MDR Fee'}</th>
                     <th className="pb-3 pr-2 font-semibold text-right">Net Payout</th>
                 </tr>
             </thead>
@@ -1391,21 +1386,24 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                 {dailyStats.orders.length > 0 ? (
                     dailyStats.orders.map((order) => {
                         const oGross = order.subtotal || order.total || 0;
-                        const oFee = (order.total * STANDARD_MDR) / 100;
+                        const isCodOrder = order.paymentDetails?.method === 'cod';
+                        const oFee = isCodOrder ? 0 : (order.total * STANDARD_MDR) / 100;
                         const oNet = isFeeWaived ? oGross : (oGross - oFee);
 
                         return (
                             <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="py-4 pl-2">
-                                    <p className="font-bold text-gray-800 text-sm">{order.userName || 'Guest'}</p>
-                                    <p className="text-[10px] text-gray-400 font-mono uppercase">{order.id.slice(-8)}</p>
+                                    <div className="flex items-center gap-2">
+                                        <div>
+                                            <p className="font-bold text-gray-800 text-sm">{order.userName || 'Guest'}</p>
+                                            <p className="text-[10px] text-gray-400 font-mono uppercase">{order.id.slice(-8)}</p>
+                                        </div>
+                                        {isCodOrder && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">💵 COD</span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="py-4 text-right font-medium text-gray-700">₹{oGross.toFixed(2)}</td>
-                                <td className="py-4 text-right">
-                                    <span className={`text-xs font-bold ${isFeeWaived ? 'text-purple-600' : 'text-red-400'}`}>
-                                        {isFeeWaived ? '+' : '-'} ₹{oFee.toFixed(2)}
-                                    </span>
-                                </td>
                                 <td className="py-4 pr-2 text-right">
                                     <p className="font-black text-green-600">₹{oNet.toFixed(2)}</p>
                                 </td>
@@ -1414,7 +1412,7 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                     })
                 ) : (
                     <tr>
-                        <td colSpan="4" className="py-10 text-center text-gray-400 italic">
+                        <td colSpan="3" className="py-10 text-center text-gray-400 italic">
                             No completed orders for this date.
                         </td>
                     </tr>
