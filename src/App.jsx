@@ -1575,12 +1575,11 @@ const App = () => {
   // --- KIOSK MODE & NOTIFICATION SETUP ---
   useEffect(() => {
     const setupKioskMode = async () => {
+      // Only run on physical Android/iOS devices
+      if (!Capacitor.isNativePlatform()) return; 
 
-        if (!Capacitor.isNativePlatform()) {
-        return; 
-      }
       try {
-        // 1. Prevent Screen Sleep (The "Kiosk" Feature)
+        // 1. Prevent Screen Sleep (Kiosk Mode)
         await KeepAwake.keepAwake();
         console.log("Kiosk Mode: Screen will not sleep.");
 
@@ -1591,32 +1590,38 @@ const App = () => {
         }
 
         if (permStatus.receive === 'granted') {
+          // 3. Clear/Refresh Channels for Android
+          // Android caches channel settings. If you change sounds or priority, 
+          // you often need to re-create the channel with a new ID or clear old ones.
+          if (Capacitor.getPlatform() === 'android') {
+             // Optional: You can delete the old 'v1' channel if you want to force a reset
+             // await PushNotifications.deleteChannel({ id: 'orders_critical_alarm_v1' });
+          }
+
+          // 4. Create the MAX importance channel (MUST MATCH BACKEND)
+          await PushNotifications.createChannel({
+            id: 'orders_critical_alarm_v1', 
+            name: 'New Order Alerts (Loud)',
+            description: 'Critical alerts for new incoming orders',
+            importance: 5, // Max importance for heads-up and sound
+            sound: 'alert', // Refers to res/raw/alert.mp3
+            visibility: 1, // Show on lock screen
+            vibration: true,
+            lights: true,
+            lightColor: '#10B981'
+          });
+
           await PushNotifications.register();
         }
 
-        // 3. Create a High-Priority Sound Channel
-        // This ensures the sound plays even if the phone is in "Do Not Disturb" or background
-        await PushNotifications.createChannel({
-            id: 'orders_critical_alarm_v1',
-            name: 'New Orders Loud',
-            description: 'Rings loudly when a new order arrives',
-            importance: 5, // Max importance
-            sound: 'alert', // This looks for 'alert.mp3' in res/raw
-            visibility: 1,
-            vibration: true,
-        });
-
-        // 4. Listen for Notifications (Foreground)
-        // If the app is open, we can show a nice toast or refresh data immediately
+        // 5. Listen for Foreground Notifications
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('Push received:', notification);
-            showNotification(`🔔 ${notification.title}`, "success");
-            // Optional: You could trigger a refresh here if needed, 
-            // but your onSnapshot listener already handles the data.
+          console.log('Push received:', notification);
+          showNotification(`🔔 ${notification.title}`, "success");
         });
 
       } catch (error) {
-        console.error("Error setting up Kiosk Mode:", error);
+        console.error("Kiosk Setup Error:", error);
       }
     };
 
