@@ -1600,7 +1600,7 @@ const App = () => {
 
           // 4. Create the MAX importance channel (MUST MATCH BACKEND)
           await PushNotifications.createChannel({
-            id: 'orders_critical_alarm_v1', 
+            id: 'orders_critical_alarm_v5', 
             name: 'New Order Alerts (Loud)',
             description: 'Critical alerts for new incoming orders',
             importance: 5, // Max importance for heads-up and sound
