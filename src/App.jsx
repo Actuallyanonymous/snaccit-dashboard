@@ -445,7 +445,14 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                     {/* Timestamp Display */}
                     <p className="text-xs text-gray-400 mt-1">Placed: {order.placedAtDisplay}</p>
                 </div>
-                <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ml-2 ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
+                <div className="flex flex-col gap-2 items-end">
+                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
+                    {order.paymentDetails?.method === 'cod' && (
+                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap flex items-center gap-1">
+                            💵 COD
+                        </span>
+                    )}
+                </div>
             </div>
             <div className="mb-4">
                 {order.items.map((item, index) => (
@@ -1102,19 +1109,24 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
             orders.forEach(order => {
                 const orderTotal = order.subtotal || order.total || 0; // Menu Value (Gross)
                 const paidAmount = order.total || 0;
+                const isCodOrder = order.paymentDetails?.method === 'cod';
 
                 // 1. Gross Sales
                 grossSales += orderTotal;
                 
-                // 2. Fee Logic
+                // 2. Fee Logic - EXCLUDE COD ORDERS
                 // We calculate the fee value regardless of waiver to show "What you saved" or "What you paid"
-                const feeValue = (paidAmount * STANDARD_MDR) / 100;
-                mdrFeeAmount += feeValue; 
+                // BUT we don't apply fees to COD orders at all
+                if (!isCodOrder) {
+                    const feeValue = (paidAmount * STANDARD_MDR) / 100;
+                    mdrFeeAmount += feeValue;
+                } 
 
                 // 3. Weekly Payout Logic
                 // Check if order is from this week
                 if (order.createdAtDate >= startOfWeek) {
-                    const deduction = (paidAmount * appliedRate) / 100;
+                    // For COD orders, no fee deduction. For others, apply rate based on waiver status
+                    const deduction = isCodOrder ? 0 : (paidAmount * appliedRate) / 100;
                     weeklyPayout += (orderTotal - deduction);
                 }
 
@@ -1135,7 +1147,8 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
 
     const reportTotals = reportOrders.reduce((acc, o) => {
         const gross = o.subtotal || o.total || 0;
-        const feeValue = (o.total * STANDARD_MDR) / 100;
+        const isCodOrder = o.paymentDetails?.method === 'cod';
+        const feeValue = isCodOrder ? 0 : (o.total * STANDARD_MDR) / 100;
         acc.gross += gross;
         acc.fees += feeValue;
         acc.net += isFeeWaived ? gross : (gross - feeValue);
