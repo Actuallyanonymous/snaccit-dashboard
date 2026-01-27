@@ -798,6 +798,7 @@ const MenuItemModal = ({ isOpen, onClose, onSave, itemToEdit, showNotification }
 const SettingsView = ({ restaurantId, showNotification }) => {
     const [details, setDetails] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
+    const [menuSearch, setMenuSearch] = useState(''); // Search state for menu items
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
@@ -1005,6 +1006,20 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                         <Plus size={18}/>Add New Item
                     </button>
                 </div>
+                
+                {/* Search Bar */}
+                <div className="mb-4 relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="text-gray-400" size={20} />
+                    </div>
+                    <input 
+                        type="text" 
+                        placeholder="Search menu items by name, category, or description..." 
+                        value={menuSearch}
+                        onChange={(e) => setMenuSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -1019,7 +1034,17 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {menuItems.map(item => (
+                            {menuItems
+                                .filter(item => {
+                                    if (!menuSearch) return true;
+                                    const searchLower = menuSearch.toLowerCase();
+                                    return (
+                                        item.name?.toLowerCase().includes(searchLower) ||
+                                        item.category?.toLowerCase().includes(searchLower) ||
+                                        item.description?.toLowerCase().includes(searchLower)
+                                    );
+                                })
+                                .map(item => (
                                 <tr key={item.id} className={`border-b hover:bg-gray-50 ${item.isAvailable === false ? 'opacity-60 bg-gray-50' : ''}`}>
                                     <td className="p-2 font-medium">{item.name}</td>
                                     <td className="p-2 text-xs font-bold text-blue-600 uppercase">{item.category || 'N/A'}</td>
