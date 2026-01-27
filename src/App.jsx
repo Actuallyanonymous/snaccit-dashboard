@@ -440,7 +440,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
         const isCodOrder = order.paymentDetails?.method === 'cod';
         
         return (
-        <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${isCodOrder ? 'border-amber-500 bg-amber-50/30 ring-2 ring-amber-200' : statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
+        <div key={order.id} className={`bg-white p-6 rounded-lg shadow-md border-l-4 ${isCodOrder ? 'border-emerald-500 bg-emerald-50/30 ring-2 ring-emerald-200' : statusStyles[order.status]?.borderColor || 'border-gray-400'} ${order.status === 'pending' ? 'ring-4 ring-yellow-400/50 animate-pulse' : ''}`}>
             <div className="flex justify-between items-start mb-4">
                 <div>
                     <h3 className="font-bold text-lg text-gray-800 truncate">{order.userName || 'Customer'}</h3>
@@ -451,7 +451,7 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                 <div className="flex flex-col gap-2 items-end">
                     <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ${statusStyles[order.status]?.bgColor || 'bg-gray-100'} ${statusStyles[order.status]?.textColor || 'text-gray-700'}`}>{order.status.replace('_', ' ')}</span>
                     {isCodOrder && (
-                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap flex items-center gap-1">
+                        <span className="text-xs font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap flex items-center gap-1">
                             💵 COD
                         </span>
                     )}
@@ -466,12 +466,14 @@ const OrdersView = ({ restaurantId, showNotification }) => {
             </div>
             <div className="border-t pt-4">
                 {isCodOrder && (
-                    <div className="mb-3 p-3 bg-amber-100 border-2 border-amber-400 rounded-lg">
-                        <div className="flex items-center justify-center gap-2">
-                            <span className="text-2xl">💵</span>
+                    <div className="mb-3 p-3 bg-emerald-100 border-2 border-emerald-400 rounded-lg">
+                        <div className="flex items-center gap-2">
+                            <div className="bg-emerald-200 p-1.5 rounded-full">
+                                <Coins size={18} className="text-emerald-700"/>
+                            </div>
                             <div>
-                                <p className="text-sm font-black text-amber-900 uppercase tracking-wide">Cash on Delivery</p>
-                                <p className="text-xs text-amber-700">Customer will pay ₹{order.total.toFixed(2)} in cash</p>
+                                <p className="text-sm font-black text-emerald-900 uppercase tracking-wide">Cash on Delivery</p>
+                                <p className="text-xs text-emerald-700">Customer will pay ₹{order.total.toFixed(2)} in cash</p>
                             </div>
                         </div>
                     </div>
@@ -1414,7 +1416,7 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                                             <p className="text-[10px] text-gray-400 font-mono uppercase">{order.id.slice(-8)}</p>
                                         </div>
                                         {isCodOrder && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">💵 COD</span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">💵 COD</span>
                                         )}
                                     </div>
                                 </td>
