@@ -1182,9 +1182,9 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                 }
             });
 
-            const reportOrders = orders.filter(o => 
-        o.createdAtDate?.toLocaleDateString('en-CA') === selectedDate
-    );
+            const reportOrders = orders
+        .filter(o => o.createdAtDate?.toLocaleDateString('en-CA') === selectedDate)
+        .sort((a, b) => b.createdAtDate - a.createdAtDate); // Sort by time descending (most recent first)
 
     const reportTotals = reportOrders.reduce((acc, o) => {
         const gross = o.subtotal || o.total || 0;
@@ -1419,8 +1419,8 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
             <thead>
                 <tr className="text-gray-400 text-xs uppercase border-b border-gray-100">
                     <th className="pb-3 pl-2 font-semibold">Customer / Order ID</th>
-                    <th className="pb-3 font-semibold text-right">MRP (Gross)</th>
-                    <th className="pb-3 pr-2 font-semibold text-right">Net Payout</th>
+                    <th className="pb-3 font-semibold text-center">Order Time</th>
+                    <th className="pb-3 pr-2 font-semibold text-right">MRP (Gross)</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -1430,6 +1430,10 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                         const isCodOrder = order.paymentDetails?.method === 'cod';
                         const oFee = isCodOrder ? 0 : (order.total * STANDARD_MDR) / 100;
                         const oNet = isFeeWaived ? oGross : (oGross - oFee);
+
+                        const orderTime = order.createdAtDate ? 
+                            order.createdAtDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 
+                            'N/A';
 
                         return (
                             <tr key={order.id} className="hover:bg-gray-50 transition-colors">
@@ -1444,10 +1448,10 @@ const [dailyStats, setDailyStats] = useState({ orders: [], gross: 0, fees: 0, ne
                                         )}
                                     </div>
                                 </td>
-                                <td className="py-4 text-right font-medium text-gray-700">₹{oGross.toFixed(2)}</td>
-                                <td className="py-4 pr-2 text-right">
-                                    <p className="font-black text-green-600">₹{oNet.toFixed(2)}</p>
+                                <td className="py-4 text-center">
+                                    <p className="font-bold text-blue-600 text-sm">{orderTime}</p>
                                 </td>
+                                <td className="py-4 pr-2 text-right font-medium text-gray-700">₹{oGross.toFixed(2)}</td>
                             </tr>
                         );
                     })
