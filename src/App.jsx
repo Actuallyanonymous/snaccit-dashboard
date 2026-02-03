@@ -987,6 +987,53 @@ const SettingsView = ({ restaurantId, showNotification }) => {
                         <label className="block text-sm font-medium">Closing Time</label>
                         <input type="time" name="closingTime" value={details.closingTime || ''} onChange={handleDetailsChange} className="mt-1 w-full border border-gray-300 rounded-md p-2"/>
                     </div>
+                    
+                    {/* Restaurant Operational Status Toggle */}
+                    <div className="md:col-span-2 border-t pt-6 mt-4">
+                        <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 p-5 rounded-xl">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                        {details.isOperational !== false ? (
+                                            <span className="text-green-600">🟢 Restaurant is Open</span>
+                                        ) : (
+                                            <span className="text-red-600">⭕ Restaurant is Closed</span>
+                                        )}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                        {details.isOperational !== false 
+                                            ? "Your restaurant is visible and accepting orders on Snaccit"
+                                            : "Your restaurant appears grayed out and customers cannot place orders"
+                                        }
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        if (details.isOperational !== false) {
+                                            // Switching OFF - show confirmation
+                                            if (window.confirm("⚠️ Are you sure you want to close your restaurant?\n\nCustomers will not be able to place orders until you switch it back on.")) {
+                                                updateDoc(doc(db, "restaurants", restaurantId), { isOperational: false })
+                                                    .then(() => showNotification("Restaurant closed successfully", "info"))
+                                                    .catch(err => showNotification("Failed to update status", "error"));
+                                            }
+                                        } else {
+                                            // Switching ON - no confirmation needed
+                                            updateDoc(doc(db, "restaurants", restaurantId), { isOperational: true })
+                                                .then(() => showNotification("Restaurant opened successfully! 🎉", "success"))
+                                                .catch(err => showNotification("Failed to update status", "error"));
+                                        }
+                                    }}
+                                    className={`px-6 py-3 rounded-lg font-bold text-white transition-all shadow-md hover:shadow-lg whitespace-nowrap ${
+                                        details.isOperational !== false 
+                                            ? 'bg-red-600 hover:bg-red-700' 
+                                            : 'bg-green-600 hover:bg-green-700'
+                                    }`}
+                                >
+                                    {details.isOperational !== false ? '🔴 Close Restaurant' : '🟢 Open Restaurant'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <button 
