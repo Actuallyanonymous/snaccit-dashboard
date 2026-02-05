@@ -463,6 +463,20 @@ const OrdersView = ({ restaurantId, showNotification }) => {
                     </div>
                 ))}
             </div>
+            
+            {/* Customer Special Request Note */}
+            {order.orderNote && (
+                <div className="mb-4 p-3 bg-amber-50 border-2 border-amber-300 rounded-lg">
+                    <div className="flex items-start gap-2">
+                        <span className="text-lg">📝</span>
+                        <div>
+                            <p className="text-xs font-black text-amber-800 uppercase tracking-wide">Special Request</p>
+                            <p className="text-sm text-amber-900 mt-1">{order.orderNote}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <div className="border-t pt-4">
                 {isCodOrder && (
                     <div className="mb-3 p-3 bg-emerald-100 border-2 border-emerald-400 rounded-lg">
